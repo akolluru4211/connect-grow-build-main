@@ -151,17 +151,15 @@ export default function Network() {
         
         <div className="container py-4 sm:py-6 max-w-7xl px-3 sm:px-6 relative z-10">
         {/* Header */}
-        <div className="flex flex-col gap-3 mb-4 sm:mb-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold flex items-center gap-2">
-                <Users className="h-5 w-5 sm:h-7 sm:w-7 text-primary" />
-                My Network
-              </h1>
-              <p className="text-muted-foreground text-xs sm:text-sm mt-0.5 sm:mt-1">
-                Connect with professionals and grow your network
-              </p>
-            </div>
+        <div className="flex flex-col items-center md:items-start text-center md:text-left gap-3 mb-6 sm:mb-8">
+          <div>
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold flex items-center justify-center md:justify-start gap-3">
+              <Users className="h-6 w-6 sm:h-8 sm:w-8 text-primary" />
+              My Network
+            </h1>
+            <p className="text-muted-foreground text-sm sm:text-base mt-1 max-w-md mx-auto md:mx-0">
+              Connect with professionals and grow your network
+            </p>
           </div>
 
 

@@ -529,15 +529,13 @@ export default function Network() {
             </div>
           </CardContent>
         </Card>
+        <QRScanner 
+          isOpen={isScannerOpen} 
+          onClose={() => setIsScannerOpen(false)} 
+          onScan={handleScan} 
+        />
       </div>
-      
-      <QRScanner 
-        isOpen={isScannerOpen} 
-        onClose={() => setIsScannerOpen(false)} 
-        onScan={handleScan} 
-      />
-        </div>
-      </div>
-    </MainLayout>
-  );
+    </div>
+  </MainLayout>
+);
 }

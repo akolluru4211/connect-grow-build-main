@@ -1,0 +1,1 @@
+ALTER TABLE public.internships ADD COLUMN application_url TEXT;

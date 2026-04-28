@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  edworld-frontend:
+    build: .
+    ports:
+      - "80:80"
+    environment:
+      - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
+      - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+    restart: always
+
+  # If the user wants a separate CRM microservice or DB in the future, 
+  # we can add it here. For now, focusing on frontend containerization 
+  # for Google Cloud Run / GKE.

@@ -1,0 +1,5 @@
+supabase/**
+node_modules
+.env
+.vscode
+dist

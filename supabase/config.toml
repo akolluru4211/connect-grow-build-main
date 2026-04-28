@@ -1,0 +1,58 @@
+project_id = "scwliaddydtnadqvkahk"
+
+[functions.job-match]
+verify_jwt = false
+
+[functions.send-notification]
+verify_jwt = false
+
+[functions.resume-ai]
+verify_jwt = false
+
+[functions.interview-prep]
+verify_jwt = false
+
+[functions.cover-letter]
+verify_jwt = false
+
+[functions.mock-interview]
+verify_jwt = false
+
+[functions.blog-ai-suggestions]
+verify_jwt = false
+
+[functions.email-writer]
+verify_jwt = false
+
+[functions.ai-content-generator]
+verify_jwt = false
+
+[functions.ai-mentor]
+verify_jwt = false
+
+[functions.ai-roadmap]
+verify_jwt = false
+
+[functions.auto-blog-generator]
+verify_jwt = false
+
+[functions.career-counseling]
+verify_jwt = false
+
+[functions.exam-helper]
+verify_jwt = false
+
+[functions.project-ideas]
+verify_jwt = false
+
+[functions.paper-summarizer]
+verify_jwt = false
+
+[functions.presentation-generator]
+verify_jwt = false
+
+[functions.feature-announcement]
+verify_jwt = false
+
+[functions.custom-email]
+verify_jwt = false

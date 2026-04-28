@@ -270,7 +270,7 @@ export default function Network() {
 
           {/* Suggestions Tab */}
           <TabsContent value="suggestions">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col items-center sm:flex-row sm:justify-between mb-4 text-center sm:text-left gap-2">
               <h2 className="text-lg font-semibold text-foreground">
                 People you may know based on your activity
               </h2>
@@ -321,7 +321,7 @@ export default function Network() {
 
           {/* All People Tab */}
           <TabsContent value="all-people">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col items-center sm:flex-row sm:justify-between mb-4 text-center sm:text-left gap-2">
               <h2 className="text-lg font-semibold text-foreground">
                 Discover people on Edworld
               </h2>
@@ -365,7 +365,7 @@ export default function Network() {
 
           {/* Following Tab */}
           <TabsContent value="following">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col items-center sm:flex-row sm:justify-between mb-4 text-center sm:text-left gap-2">
               <h2 className="text-lg font-semibold text-foreground">
                 People you follow
               </h2>
@@ -413,7 +413,7 @@ export default function Network() {
 
           {/* Followers Tab */}
           <TabsContent value="followers">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col items-center sm:flex-row sm:justify-between mb-4 text-center sm:text-left gap-2">
               <h2 className="text-lg font-semibold text-foreground">
                 People following you
               </h2>
@@ -461,7 +461,7 @@ export default function Network() {
 
           {/* Connections Tab */}
           <TabsContent value="connections">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col items-center sm:flex-row sm:justify-between mb-4 text-center sm:text-left gap-2">
               <h2 className="text-lg font-semibold text-foreground">
                 Your connections
               </h2>

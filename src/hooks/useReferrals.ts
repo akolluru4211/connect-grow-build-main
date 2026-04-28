@@ -37,10 +37,14 @@ export function useReferrals() {
   });
 
   useEffect(() => {
-    if (user && !isLoading && profile && !profile.referral_code && !generateCodeMutation.isPending) {
-      generateCodeMutation.mutate();
-    }
-  }, [user, profile, isLoading]);
+    const checkAndGenerate = async () => {
+      if (user && !isLoading && profile && !profile.referral_code && !generateCodeMutation.isPending) {
+        console.log("Auto-generating referral code for user:", user.id);
+        generateCodeMutation.mutate();
+      }
+    };
+    checkAndGenerate();
+  }, [user, profile, isLoading, generateCodeMutation.isPending]);
 
   const { data: referralCount = 0 } = useQuery({
     queryKey: ["referral-count", user?.id],

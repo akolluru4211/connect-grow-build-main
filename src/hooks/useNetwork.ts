@@ -290,6 +290,69 @@ export function useNetwork() {
     },
   });
 
+  const directConnect = useMutation({
+    mutationFn: async (otherUserId: string) => {
+      if (!user) throw new Error("Must be logged in");
+      
+      console.log("Directly connecting to:", otherUserId);
+
+      // Check if connection already exists (in either direction)
+      const { data: existingConnection } = await supabase
+        .from("user_connections")
+        .select("id, status")
+        .or(
+          `and(requester_id.eq.${user.id},receiver_id.eq.${otherUserId}),and(requester_id.eq.${otherUserId},receiver_id.eq.${user.id})`
+        )
+        .maybeSingle();
+
+      if (existingConnection) {
+        if (existingConnection.status === "accepted") {
+          return "already_connected";
+        }
+        
+        // Upgrade existing (pending/declined) to accepted
+        const { error } = await supabase
+          .from("user_connections")
+          .update({ status: "accepted" })
+          .eq("id", existingConnection.id);
+          
+        if (error) throw error;
+        return;
+      }
+
+      // Create new accepted connection
+      const { error } = await supabase.from("user_connections").insert({
+        requester_id: user.id,
+        receiver_id: otherUserId,
+        status: "accepted",
+      });
+
+      if (error) throw error;
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["connections", user?.id] });
+      queryClient.invalidateQueries({ queryKey: ["connection-suggestions", user?.id] });
+      queryClient.invalidateQueries({ queryKey: ["sent-requests", user?.id] });
+      queryClient.invalidateQueries({ queryKey: ["pending-requests", user?.id] });
+      
+      if (result === "already_connected") {
+        toast({ title: "Already connected! 🤝" });
+      } else {
+        toast({ 
+          title: "Connected! ⚡", 
+          description: "You've successfully connected via ID scan.",
+        });
+      }
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Connection failed", 
+        description: error.message, 
+        variant: "destructive" 
+      });
+    }
+  });
+
   return {
     connections,
     connectionsLoading,
@@ -303,5 +366,6 @@ export function useNetwork() {
     acceptRequest,
     declineRequest,
     removeConnection,
+    directConnect,
   };
 }

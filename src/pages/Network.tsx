@@ -48,6 +48,7 @@ export default function Network() {
     acceptRequest,
     declineRequest,
     removeConnection,
+    directConnect,
   } = useNetwork();
   
   const {
@@ -102,7 +103,7 @@ export default function Network() {
           return;
         }
 
-        sendRequest.mutate(profileId);
+        directConnect.mutate(profileId);
       } else {
         toast({ 
           title: "Invalid QR Code", 
@@ -143,7 +144,12 @@ export default function Network() {
 
   return (
     <MainLayout>
-      <div className="container py-4 sm:py-6 max-w-7xl px-3 sm:px-6">
+      <div className="relative overflow-hidden">
+        {/* Decorative Background Elements */}
+        <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-primary/5 rounded-full blur-[120px] -translate-y-1/2 pointer-events-none" />
+        <div className="absolute bottom-0 right-1/4 w-[400px] h-[400px] bg-blue-500/5 rounded-full blur-[100px] translate-y-1/2 pointer-events-none" />
+        
+        <div className="container py-4 sm:py-6 max-w-7xl px-3 sm:px-6 relative z-10">
         {/* Header */}
         <div className="flex flex-col gap-3 mb-4 sm:mb-6">
           <div className="flex items-center justify-between">
@@ -532,6 +538,8 @@ export default function Network() {
         onClose={() => setIsScannerOpen(false)} 
         onScan={handleScan} 
       />
+        </div>
+      </div>
     </MainLayout>
   );
 }

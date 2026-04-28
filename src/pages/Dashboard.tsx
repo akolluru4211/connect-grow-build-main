@@ -165,7 +165,12 @@ export default function Dashboard() {
   return (
     <MainLayout>
       <OnboardingFlow />
-      <div className="container py-6 space-y-8 flex flex-col items-center lg:items-stretch overflow-x-hidden">
+      <div className="relative overflow-hidden">
+        {/* Decorative Background Elements */}
+        <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-primary/5 rounded-full blur-[120px] -translate-y-1/2 pointer-events-none" />
+        <div className="absolute bottom-0 right-1/4 w-[400px] h-[400px] bg-blue-500/5 rounded-full blur-[100px] translate-y-1/2 pointer-events-none" />
+        
+        <div className="container py-6 space-y-8 flex flex-col items-stretch relative z-10">
         {/* ─── HERO PROFILE WITH BANNER ─── */}
         <motion.div
           initial={{ opacity: 0, y: -10 }}
@@ -631,6 +636,7 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
-    </MainLayout>
-  );
+    </div>
+  </MainLayout>
+);
 }

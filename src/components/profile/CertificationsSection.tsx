@@ -18,6 +18,7 @@ import { Award, Plus, Pencil, Trash2, ExternalLink, Calendar, BadgeCheck, Sparkl
 import { format, parseISO, isBefore } from "date-fns";
 import { motion } from "framer-motion";
 import { jsPDF } from "jspdf";
+import { toast } from "sonner";
 
 interface CertificationsSectionProps {
   userId?: string;

@@ -1,52 +1,9 @@
-﻿import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+/// <reference lib="deno.ns" />
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.89.0";
+import { corsHeaders, callAIWithFallback, parseAIJSON } from "../_shared/ai-utils.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
-
-const FALLBACK_MODELS = [
-  "gemini-1.5-pro",
-  "gemini-1.5-flash",
-];
-
-async function callAIWithFallback(apiKey: string, body: any): Promise<Response> {
-  let lastError = "";
-  for (const model of FALLBACK_MODELS) {
-    try {
-      console.log(`Attempting AI request with model: ${model}`);
-      const url = `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions?key=${apiKey}`;
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "x-goog-api-key": apiKey 
-        },
-        body: JSON.stringify({ ...body, model }),
-      });
-
-      if (response.ok) {
-        console.log(`AI Success with model: ${model}`);
-        return response;
-      }
-
-      const errStatus = response.status;
-      const errText = await response.text();
-      lastError = `${model} (Status ${errStatus}): ${errText}`;
-      console.warn(`Model ${model} failed:`, lastError);
-      
-      if (errStatus === 402 || errStatus === 429) return response;
-      
-    } catch (e) {
-      lastError = `${model}: ${e instanceof Error ? e.message : "Network/Connection error"}`;
-      console.warn(`Model ${model} execution error:`, e);
-    }
-  }
-  throw new Error(`AI Service Unavailable. Details: ${lastError}`);
-}
-
-serve(async (req) => {
+serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
@@ -75,21 +32,15 @@ serve(async (req) => {
     });
 
     if (!aiResponse.ok) {
-      if (aiResponse.status === 429) return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again later." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      if (aiResponse.status === 402) return new Response(JSON.stringify({ error: "Payment required. Please add credits." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      const errorText = await aiResponse.text();
-      console.error("AI gateway error:", aiResponse.status, errorText);
-      throw new Error("Failed to generate content");
+      return aiResponse;
     }
 
     const aiData = await aiResponse.json();
     const rawContent = aiData.choices?.[0]?.message?.content || "";
-
+    
     let parsedContent;
     try {
-      const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
-      if (jsonMatch) parsedContent = JSON.parse(jsonMatch[0]);
-      else parsedContent = { title: "Daily Update", content: rawContent };
+      parsedContent = parseAIJSON(rawContent);
     } catch {
       parsedContent = { title: "Daily Update", content: rawContent };
     }
@@ -111,5 +62,6 @@ serve(async (req) => {
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
+
 
 

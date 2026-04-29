@@ -1,6 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { safeInvoke } from "@/lib/gemini";
 
 interface RoadmapSkill {
   name: string;
@@ -54,13 +54,7 @@ interface RoadmapInput {
 export function useAIRoadmap() {
   return useMutation({
     mutationFn: async (input: RoadmapInput): Promise<AIRoadmap> => {
-      const { data, error } = await supabase.functions.invoke("ai-roadmap", {
-        body: input,
-      });
-
-      if (error) throw error;
-      if (data.error) throw new Error(data.error);
-      return data;
+      return await safeInvoke<AIRoadmap>("ai-roadmap", input);
     },
     onError: (error) => {
       toast.error("Failed to generate roadmap: " + error.message);

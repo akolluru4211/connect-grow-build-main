@@ -1,11 +1,7 @@
-// @ts-nocheck
+/// <reference lib="deno.ns" />
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { corsHeaders, callAIWithFallback } from "../_shared/ai-utils.ts";
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -53,56 +49,46 @@ serve(async (req: Request) => {
       throw new Error("GEMINI_API_KEY is not set");
     }
 
-    // Call Gemini API directly (OpenAI compatible endpoint structure)
-    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${GEMINI_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "gemini-1.5-flash",
-        messages: [
-          {
-            role: "system",
-            content: "You are the EdWorld AI Admin Controller. You parse human requests to create Jobs or Internships. You must output raw JSON using function calling. If creating a job, target 'create_job'. If creating an internship, target 'create_internship'."
-          },
-          {
-            role: "user",
-            content: prompt
-          }
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "execute_admin_action",
-              description: "Executes an action in the database based on the human prompt",
-              parameters: {
-                type: "object",
-                properties: {
-                  action_type: { type: "string", enum: ["create_job", "create_internship", "unknown"] },
-                  title: { type: "string" },
-                  company_id: { type: "string", description: "Use a mock UUID like '00000000-0000-0000-0000-000000000000'" },
-                  location: { type: "string" },
-                  description: { type: "string" },
-                  salary_range: { type: "string" },
-                  stipend: { type: "string" },
-                  requirements: { type: "array", items: { type: "string" } }
-                },
-                required: ["action_type", "title", "description"]
-              }
+    // Call Gemini API using shared utility
+    const response = await callAIWithFallback(GEMINI_API_KEY, {
+      messages: [
+        {
+          role: "system",
+          content: "You are the EdWorld AI Admin Controller. You parse human requests to create Jobs or Internships. You must output raw JSON using function calling. If creating a job, target 'create_job'. If creating an internship, target 'create_internship'."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "execute_admin_action",
+            description: "Executes an action in the database based on the human prompt",
+            parameters: {
+              type: "object",
+              properties: {
+                action_type: { type: "string", enum: ["create_job", "create_internship", "unknown"] },
+                title: { type: "string" },
+                company_id: { type: "string", description: "Use a mock UUID like '00000000-0000-0000-0000-000000000000'" },
+                location: { type: "string" },
+                description: { type: "string" },
+                salary_range: { type: "string" },
+                stipend: { type: "string" },
+                requirements: { type: "array", items: { type: "string" } }
+              },
+              required: ["action_type", "title", "description"]
             }
           }
-        ],
-        tool_choice: "auto"
-      })
+        }
+      ],
+      tool_choice: "auto"
     });
 
     if (!response.ok) {
-      const text = await response.text();
-      console.error("Gemini failed:", text);
-      throw new Error(`Gemini API failed with status ${response.status}`);
+      return response; // Handled by utility
     }
 
     const aiData = await response.json();
@@ -158,3 +144,4 @@ serve(async (req: Request) => {
     });
   }
 });
+

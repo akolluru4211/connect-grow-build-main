@@ -1,7 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { ResumeData } from "./useResumes";
+import { safeInvoke } from "@/lib/gemini";
 
 interface TailorRequest {
   resume: ResumeData;
@@ -19,26 +19,19 @@ interface TailorResponse {
 
 export function useTailorResume() {
   return useMutation({
-    mutationFn: async ({ resume, jobDescription, jobTitle }: TailorRequest): Promise<TailorResponse | null> => {
-      const { data, error } = await supabase.functions.invoke("resume-ai", {
-        body: {
-          type: "tailor",
-          resume,
-          jobDescription,
-          jobTitle,
-        },
+    mutationFn: async ({ resume, jobDescription, jobTitle }: TailorRequest): Promise<TailorResponse> => {
+      return await safeInvoke<TailorResponse>("resume-ai", {
+        type: "tailor",
+        resume,
+        jobDescription,
+        jobTitle,
       });
-
-      if (error) {
-        console.error("Tailor error:", error);
-        toast.error("Failed to tailor resume");
-        return null;
-      }
-
-      return data as TailorResponse;
     },
     onSuccess: () => {
       toast.success("Resume tailored to job description!");
     },
+    onError: (error) => {
+      toast.error("Failed to tailor resume: " + error.message);
+    }
   });
 }

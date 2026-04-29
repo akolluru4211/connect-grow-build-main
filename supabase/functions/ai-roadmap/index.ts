@@ -1,51 +1,8 @@
-﻿import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+/// <reference lib="deno.ns" />
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { corsHeaders, callAIWithFallback, parseAIJSON } from "../_shared/ai-utils.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
-
-const FALLBACK_MODELS = [
-  "gemini-1.5-pro",
-  "gemini-1.5-flash",
-];
-
-async function callAIWithFallback(apiKey: string, body: any): Promise<Response> {
-  let lastError = "";
-  for (const model of FALLBACK_MODELS) {
-    try {
-      console.log(`Attempting AI request with model: ${model}`);
-      const url = `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions?key=${apiKey}`;
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "x-goog-api-key": apiKey 
-        },
-        body: JSON.stringify({ ...body, model }),
-      });
-
-      if (response.ok) {
-        console.log(`AI Success with model: ${model}`);
-        return response;
-      }
-
-      const errStatus = response.status;
-      const errText = await response.text();
-      lastError = `${model} (Status ${errStatus}): ${errText}`;
-      console.warn(`Model ${model} failed:`, lastError);
-      
-      if (errStatus === 402 || errStatus === 429) return response;
-      
-    } catch (e) {
-      lastError = `${model}: ${e instanceof Error ? e.message : "Network/Connection error"}`;
-      console.warn(`Model ${model} execution error:`, e);
-    }
-  }
-  throw new Error(`AI Service Unavailable. Details: ${lastError}`);
-}
-
-serve(async (req) => {
+serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
@@ -117,22 +74,44 @@ Provide a structured roadmap with:
     });
 
     if (!response.ok) {
-      if (response.status === 429) return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again later." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      if (response.status === 402) return new Response(JSON.stringify({ error: "AI credits exhausted. Please add credits to continue." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      throw new Error("AI service error");
+      return response; // callAIWithFallback already returns a structured error Response
     }
 
     const aiResult = await response.json();
+    let roadmap;
+    
     const toolCall = aiResult.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall?.function?.arguments) throw new Error("Invalid AI response format");
+    const content = aiResult.choices?.[0]?.message?.content || "";
 
-    const roadmap = JSON.parse(toolCall.function.arguments);
-    return new Response(JSON.stringify(roadmap), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    try {
+      if (toolCall?.function?.arguments) {
+        roadmap = JSON.parse(toolCall.function.arguments);
+      } else {
+        roadmap = parseAIJSON(content);
+      }
+    } catch (e) {
+      console.error("Failed to parse AI response:", content);
+      return new Response(JSON.stringify({ 
+        error: "Malformed AI response", 
+        details: content.substring(0, 500)
+      }), { 
+        status: 500, 
+        headers: { ...corsHeaders, "Content-Type": "application/json" } 
+      });
+    }
+
+    return new Response(JSON.stringify(roadmap), { 
+      headers: { ...corsHeaders, "Content-Type": "application/json" } 
+    });
   } catch (error) {
     console.error("Roadmap generation error:", error);
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ 
+      error: error instanceof Error ? error.message : "Unknown error",
+      details: error instanceof Error ? error.stack : undefined
+    }), { 
+      status: 500, 
+      headers: { ...corsHeaders, "Content-Type": "application/json" } 
+    });
   }
 });
 

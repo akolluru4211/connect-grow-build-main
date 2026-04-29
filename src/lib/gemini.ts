@@ -1,12 +1,48 @@
 import { supabase } from "@/integrations/supabase/client";
 
+/**
+ * Safely invokes a Supabase Edge Function and handles errors.
+ * Extracts detailed error messages from the response body if available.
+ */
+export async function safeInvoke<T = any>(functionName: string, body: any): Promise<T> {
+  const { data, error } = await supabase.functions.invoke(functionName, { body });
+
+  if (error) {
+    console.error(`Edge Function Error (${functionName}):`, error);
+    
+    // Attempt to extract detailed error message from the response body
+    // In newer supabase-js, the error object might contain the response
+    let errorMessage = "The AI service encountered an issue. Please try again.";
+    
+    if (error.name === 'FunctionsHttpError') {
+      try {
+        // FunctionsHttpError has a context property which is the Response
+        const responseBody = await error.context.json();
+        errorMessage = responseBody.error || responseBody.message || errorMessage;
+      } catch (e) {
+        // Fallback to generic message if parsing fails
+      }
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    
+    if (errorMessage.includes("non-2xx error")) {
+      errorMessage = "AI service returned an error. Please try again later.";
+    }
+
+    throw new Error(errorMessage);
+  }
+
+  if (data?.error) {
+    throw new Error(data.error);
+  }
+
+  return data;
+}
+
 export async function generateContent(prompt: string) {
   try {
-    const { data, error } = await supabase.functions.invoke('gemini-proxy', {
-      body: { prompt }
-    });
-
-    if (error) throw error;
+    const data = await safeInvoke('gemini-proxy', { prompt });
     return data.choices?.[0]?.message?.content || "";
   } catch (error) {
     console.error("Gemini API Error:", error);
@@ -16,15 +52,11 @@ export async function generateContent(prompt: string) {
 
 export async function generateJSON<T>(prompt: string): Promise<T> {
   try {
-    const { data, error } = await supabase.functions.invoke('gemini-proxy', {
-      body: { 
-        prompt,
-        jsonMode: true
-      }
+    const data = await safeInvoke('gemini-proxy', { 
+      prompt,
+      jsonMode: true
     });
 
-    if (error) throw error;
-    
     const content = data.choices?.[0]?.message?.content || "";
     try {
       return JSON.parse(content) as T;

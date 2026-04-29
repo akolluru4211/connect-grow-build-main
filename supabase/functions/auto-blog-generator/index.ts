@@ -1,15 +1,12 @@
+/// <reference lib="deno.ns" />
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.89.0";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+import { corsHeaders, callAIWithFallback, parseAIJSON } from "../_shared/ai-utils.ts";
 
 // AI blog author configuration
 const AI_AUTHOR_NAME = "Edworld co.";
 
-serve(async (req) => {
+serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -26,7 +23,6 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
     // Find or use an existing user as the AI author
-    // First check if there's a profile with name "edwold"
     const { data: existingProfile } = await supabase
       .from("profiles")
       .select("id")
@@ -94,51 +90,25 @@ Format your response as JSON with these exact fields:
   "tags": ["tag1", "tag2", "tag3"]
 }`;
 
-    const aiResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${GEMINI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `Write a blog post about: ${randomTopic}. Make it practical and valuable for professionals and job seekers. Current date: ${new Date().toLocaleDateString()}.` }
-        ],
-      }),
+    const response = await callAIWithFallback(GEMINI_API_KEY, {
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: `Write a blog post about: ${randomTopic}. Make it practical and valuable for professionals and job seekers. Current date: ${new Date().toLocaleDateString()}.` }
+      ],
     });
 
-    if (!aiResponse.ok) {
-      if (aiResponse.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again later." }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (aiResponse.status === 402) {
-        return new Response(JSON.stringify({ error: "Payment required. Please add credits." }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const errorText = await aiResponse.text();
-      console.error("AI gateway error:", aiResponse.status, errorText);
-      throw new Error("Failed to generate blog content");
+    if (!response.ok) {
+      return response;
     }
 
-    const aiData = await aiResponse.json();
+    const aiData = await response.json();
     const rawContent = aiData.choices?.[0]?.message?.content || "";
     
     // Parse the JSON response from AI
     let parsedContent;
     try {
-      const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        parsedContent = JSON.parse(jsonMatch[0]);
-      } else {
-        throw new Error("No JSON found in response");
-      }
-    } catch {
+      parsedContent = parseAIJSON(rawContent);
+    } catch (e) {
       console.error("Failed to parse AI response:", rawContent);
       parsedContent = {
         title: `Career Tips: ${randomTopic}`,

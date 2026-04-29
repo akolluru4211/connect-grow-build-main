@@ -1,6 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { safeInvoke } from "@/lib/gemini";
 
 interface MockInterviewInput {
   question: string;
@@ -28,13 +28,7 @@ interface MockInterviewFeedback {
 export function useEvaluateResponse() {
   return useMutation({
     mutationFn: async (input: MockInterviewInput): Promise<MockInterviewFeedback> => {
-      const { data, error } = await supabase.functions.invoke("mock-interview", {
-        body: input,
-      });
-
-      if (error) throw error;
-      if (data.error) throw new Error(data.error);
-      return data;
+      return await safeInvoke<MockInterviewFeedback>("mock-interview", input);
     },
     onError: (error) => {
       toast.error("Failed to evaluate response: " + error.message);

@@ -1,6 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { safeInvoke } from "@/lib/gemini";
 
 export type MentorType = 
   | "career" 
@@ -33,13 +33,7 @@ interface MentorResponse {
 export function useAIMentor() {
   return useMutation({
     mutationFn: async (input: MentorInput): Promise<MentorResponse> => {
-      const { data, error } = await supabase.functions.invoke("ai-mentor", {
-        body: input,
-      });
-
-      if (error) throw error;
-      if (data.error) throw new Error(data.error);
-      return data;
+      return await safeInvoke<MentorResponse>("ai-mentor", input);
     },
     onError: (error) => {
       toast.error("Failed to get mentor response: " + error.message);

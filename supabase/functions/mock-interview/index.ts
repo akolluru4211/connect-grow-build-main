@@ -1,51 +1,8 @@
-﻿import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+/// <reference lib="deno.ns" />
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { corsHeaders, callAIWithFallback, parseAIJSON } from "../_shared/ai-utils.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
-
-const FALLBACK_MODELS = [
-  "gemini-1.5-pro",
-  "gemini-1.5-flash",
-];
-
-async function callAIWithFallback(apiKey: string, body: any): Promise<Response> {
-  let lastError = "";
-  for (const model of FALLBACK_MODELS) {
-    try {
-      console.log(`Attempting AI request with model: ${model}`);
-      const url = `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions?key=${apiKey}`;
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "x-goog-api-key": apiKey 
-        },
-        body: JSON.stringify({ ...body, model }),
-      });
-
-      if (response.ok) {
-        console.log(`AI Success with model: ${model}`);
-        return response;
-      }
-
-      const errStatus = response.status;
-      const errText = await response.text();
-      lastError = `${model} (Status ${errStatus}): ${errText}`;
-      console.warn(`Model ${model} failed:`, lastError);
-      
-      if (errStatus === 402 || errStatus === 429) return response;
-      
-    } catch (e) {
-      lastError = `${model}: ${e instanceof Error ? e.message : "Network/Connection error"}`;
-      console.warn(`Model ${model} execution error:`, e);
-    }
-  }
-  throw new Error(`AI Service Unavailable. Details: ${lastError}`);
-}
-
-serve(async (req) => {
+serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
@@ -113,26 +70,34 @@ Provide detailed feedback including:
     });
 
     if (!response.ok) {
-      if (response.status === 429) return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again later." }), { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      if (response.status === 402) return new Response(JSON.stringify({ error: "AI credits exhausted. Please add funds." }), { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      throw new Error("AI request failed");
+      return response; // callAIWithFallback already formats errors nicely
     }
 
     const data = await response.json();
-    if (data.error) throw new Error(data.error.message || "AI request failed");
-
+    let result;
+    
     const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall) throw new Error("No response from AI");
+    if (toolCall?.function?.arguments) {
+      result = parseAIJSON(toolCall.function.arguments);
+    } else {
+      const content = data.choices?.[0]?.message?.content || "";
+      result = parseAIJSON(content);
+    }
 
-    const result = JSON.parse(toolCall.function.arguments);
-    return new Response(JSON.stringify(result), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify(result), { 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    });
   } catch (error: unknown) {
     console.error("Mock interview error:", error);
-    const message = error instanceof Error ? error.message : "Failed to evaluate response";
-    return new Response(JSON.stringify({ error: message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ 
+      error: error instanceof Error ? error.message : "Unknown error",
+      details: error instanceof Error ? error.stack : undefined
+    }), { 
+      status: 500, 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    });
   }
 });
+
 
 

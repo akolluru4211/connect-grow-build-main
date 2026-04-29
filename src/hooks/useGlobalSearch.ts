@@ -71,11 +71,12 @@ export function useGlobalSearch(query: string, filters?: SearchFilters) {
             }
 
             filteredJobs.slice(0, 8).forEach((job) => {
+              const company = Array.isArray(job.companies) ? job.companies[0] : job.companies;
               results.push({
                 id: job.id,
                 type: "job",
                 title: job.title,
-                subtitle: (job.companies as { name: string } | null)?.name || undefined,
+                subtitle: (company as { name: string } | null)?.name || undefined,
                 extra: job.location || job.job_type || undefined,
               });
             });
@@ -113,11 +114,12 @@ export function useGlobalSearch(query: string, filters?: SearchFilters) {
             }
 
             filteredInternships.slice(0, 8).forEach((internship) => {
+              const company = Array.isArray(internship.companies) ? internship.companies[0] : internship.companies;
               results.push({
                 id: internship.id,
                 type: "internship",
                 title: internship.title,
-                subtitle: (internship.companies as { name: string } | null)?.name || undefined,
+                subtitle: (company as { name: string } | null)?.name || undefined,
                 extra: internship.location || internship.internship_type || undefined,
               });
             });

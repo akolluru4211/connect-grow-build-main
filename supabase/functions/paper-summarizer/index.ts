@@ -1,5 +1,5 @@
 /// <reference lib="deno.ns" />
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { corsHeaders, callAIWithFallback } from "../_shared/ai-utils.ts";
 
 serve(async (req: Request) => {
@@ -75,9 +75,7 @@ ${truncatedText}`
     });
 
     if (!response.ok) {
-      if (response.status === 429) return new Response(JSON.stringify({ error: "Rate limited. Try again later." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      if (response.status === 402) return new Response(JSON.stringify({ error: "AI credits exhausted." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      throw new Error("AI request failed");
+      return response;
     }
 
     const aiData = await response.json();

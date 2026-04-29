@@ -67,12 +67,14 @@ export function useSkillEndorsements(userId?: string) {
 
           const userEndorsed = user ? endorserIds.includes(user.id) : false;
 
+          const skillData = Array.isArray(userSkill.skills) ? userSkill.skills[0] : userSkill.skills;
+          
           return {
             id: userSkill.id,
             user_id: userSkill.user_id,
             skill_id: userSkill.skill_id,
             endorsement_count: userSkill.endorsement_count || 0,
-            skill: userSkill.skills as { id: string; name: string; category: string | null },
+            skill: skillData as { id: string; name: string; category: string | null },
             endorsers,
             user_endorsed: userEndorsed,
           } as UserSkillWithDetails;

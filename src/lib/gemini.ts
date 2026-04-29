@@ -1,22 +1,13 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-
-if (!API_KEY) {
-  console.warn("VITE_GEMINI_API_KEY is not defined in your environment variables.");
-}
-
-export const genAI = new GoogleGenerativeAI(API_KEY || "");
-
-export const geminiModel = genAI.getGenerativeModel({
-  model: "gemini-1.5-flash",
-});
+import { supabase } from "@/integrations/supabase/client";
 
 export async function generateContent(prompt: string) {
   try {
-    const result = await geminiModel.generateContent(prompt);
-    const response = await result.response;
-    return response.text();
+    const { data, error } = await supabase.functions.invoke('gemini-proxy', {
+      body: { prompt }
+    });
+
+    if (error) throw error;
+    return data.choices?.[0]?.message?.content || "";
   } catch (error) {
     console.error("Gemini API Error:", error);
     throw error;
@@ -25,14 +16,24 @@ export async function generateContent(prompt: string) {
 
 export async function generateJSON<T>(prompt: string): Promise<T> {
   try {
-    const result = await geminiModel.generateContent({
-      contents: [{ role: "user", parts: [{ text: prompt + "\n\nRespond ONLY with a valid JSON object." }] }],
-      generationConfig: {
-        responseMimeType: "application/json",
-      },
+    const { data, error } = await supabase.functions.invoke('gemini-proxy', {
+      body: { 
+        prompt,
+        jsonMode: true
+      }
     });
-    const response = await result.response;
-    return JSON.parse(response.text()) as T;
+
+    if (error) throw error;
+    
+    const content = data.choices?.[0]?.message?.content || "";
+    try {
+      return JSON.parse(content) as T;
+    } catch (e) {
+      // Fallback for cases where Gemini doesn't return clean JSON
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) return JSON.parse(jsonMatch[0]) as T;
+      throw new Error("Failed to parse JSON from Gemini response");
+    }
   } catch (error) {
     console.error("Gemini JSON Generation Error:", error);
     throw error;
@@ -41,14 +42,11 @@ export async function generateJSON<T>(prompt: string): Promise<T> {
 
 export async function generateStream(prompt: string, onUpdate: (text: string) => void) {
   try {
-    const result = await geminiModel.generateContentStream(prompt);
-    let fullText = "";
-    for await (const chunk of result.stream) {
-      const chunkText = chunk.text();
-      fullText += chunkText;
-      onUpdate(fullText);
-    }
-    return fullText;
+    // Note: Supabase Functions standard invocation doesn't support streaming well yet.
+    // We'll fall back to a standard call but simulate the "update" behavior for UX consistency.
+    const content = await generateContent(prompt);
+    onUpdate(content);
+    return content;
   } catch (error) {
     console.error("Gemini Streaming Error:", error);
     throw error;
@@ -102,3 +100,4 @@ export async function discoverOpportunities(type: "internship" | "job", industry
 
   return await generateJSON<DiscoveredOpportunity[]>(prompt);
 }
+

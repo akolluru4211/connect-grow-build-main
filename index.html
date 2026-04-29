@@ -11,10 +11,8 @@
     <meta name="google-adsense-account" content="ca-pub-1367985420273106">
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1367985420273106" crossorigin="anonymous"></script>
     
-    <!-- Critical inline styles for instant render with system fonts -->
-    <style>
-      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif; }
-    </style>
+    <!-- Critical inline styles moved to index.css -->
+
     
     <!-- Preload primary font for faster LCP -->
     <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'" />
@@ -77,12 +75,10 @@
 
   <body>
     <div id="root">
-      <div id="initial-loader" style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-        <div style="text-align:center;">
-          <div style="width:2rem;height:2rem;border:4px solid #2563eb;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto;"></div>
-        </div>
+      <div id="initial-loader" class="initial-loader">
+        <div class="loader-spinner"></div>
       </div>
-      <style>@keyframes spin{to{transform:rotate(360deg)}}@media(prefers-color-scheme:dark){#initial-loader{background:#020817!important;}}</style>
+
     </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

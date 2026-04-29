@@ -268,9 +268,15 @@ export default function Dashboard() {
         </motion.div>
 
         {/* ─── QUICK ACTIONS GRID ─── */}
-        <div>
-          <h2 className="text-lg font-semibold text-foreground mb-3 text-center md:text-left">Quick Actions</h2>
-          <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+        <div className="relative">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-black text-foreground uppercase tracking-widest flex items-center gap-2">
+              <Rocket className="h-5 w-5 text-primary" />
+              Quick Actions
+            </h2>
+            <div className="h-px flex-1 bg-primary/10 ml-4 hidden sm:block" />
+          </div>
+          <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 lg:grid-cols-8 gap-4">
             {quickActions.map((action, i) => (
               <motion.div
                 key={action.href}
@@ -280,11 +286,11 @@ export default function Dashboard() {
                 animate="visible"
               >
                 <Link to={action.href}>
-                  <div className="group flex flex-col items-center gap-3 rounded-[2rem] border border-border bg-card shadow-sm transition-all hover:shadow-2xl hover:-translate-y-2 hover:bg-accent cursor-pointer p-5">
-                    <div className={`flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br ${action.gradient} text-white shadow-lg group-hover:scale-110 transition-transform`}>
-                      <action.icon className="h-7 w-7" />
+                  <div className="group flex flex-col items-center gap-3 rounded-[2rem] border border-border bg-card/50 backdrop-blur-sm shadow-sm transition-all hover:shadow-2xl hover:-translate-y-2 hover:bg-white hover:border-primary/30 cursor-pointer p-5 h-full">
+                    <div className={`flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br ${action.gradient} text-white shadow-lg group-hover:scale-110 transition-transform`}>
+                      <action.icon className="h-6 w-6" />
                     </div>
-                    <span className="text-[11px] font-black text-foreground group-hover:text-primary transition-colors uppercase tracking-widest">{action.label}</span>
+                    <span className="text-[10px] font-black text-foreground/70 group-hover:text-primary transition-colors uppercase tracking-widest text-center">{action.label}</span>
                   </div>
                 </Link>
               </motion.div>
@@ -553,7 +559,7 @@ export default function Dashboard() {
 
             {/* Professional Integration */}
             <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }}>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 xs:grid-cols-2 gap-3">
                 <GitHubWidget githubUrl={profile?.github_url} />
                 <LinkedInWidget linkedinUrl={profile?.linkedin_url} />
               </div>
@@ -631,7 +637,10 @@ export default function Dashboard() {
 
             {/* Certificate of Completion */}
             <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
-              <CertificateWidget completed={profileCompleteness >= 80} />
+              <CertificateWidget 
+                completed={profileCompleteness >= 80} 
+                userName={profile?.full_name || ""} 
+              />
             </motion.div>
           </div>
         </div>

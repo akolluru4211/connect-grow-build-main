@@ -14,9 +14,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Award, Plus, Pencil, Trash2, ExternalLink, Calendar, BadgeCheck, Sparkles, Share2 } from "lucide-react";
+import { Award, Plus, Pencil, Trash2, ExternalLink, Calendar, BadgeCheck, Sparkles, Share2, Download } from "lucide-react";
 import { format, parseISO, isBefore } from "date-fns";
 import { motion } from "framer-motion";
+import { jsPDF } from "jspdf";
 
 interface CertificationsSectionProps {
   userId?: string;
@@ -112,6 +113,88 @@ export function CertificationsSection({ userId, isOwnProfile = false }: Certific
     }
   };
 
+  const downloadEdworldPDF = (cert: Certification) => {
+    const doc = new jsPDF({
+      orientation: "landscape",
+      unit: "mm",
+      format: "a4"
+    });
+
+    const name = cert.name;
+    const studentName = user?.user_metadata?.full_name || "Valued Student";
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+
+    // Premium Border
+    doc.setDrawColor(234, 179, 8); // Primary Gold
+    doc.setLineWidth(10);
+    doc.rect(5, 5, pageWidth - 10, pageHeight - 10);
+    doc.setLineWidth(1);
+    doc.rect(8, 8, pageWidth - 16, pageHeight - 16);
+
+    // Background decoration
+    doc.setDrawColor(241, 245, 249);
+    doc.setFillColor(252, 252, 253);
+    doc.rect(12, 12, pageWidth - 24, pageHeight - 24, "F");
+
+    // Header
+    doc.setTextColor(15, 23, 42); // Slate 900
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(30);
+    doc.text("CERTIFICATE OF COMPLETION", pageWidth / 2, 50, { align: "center" });
+
+    doc.setDrawColor(226, 232, 240);
+    doc.line(pageWidth / 4, 55, (pageWidth * 3) / 4, 55);
+
+    // Body
+    doc.setTextColor(100, 116, 139); // Slate 500
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(18);
+    doc.text("This is to certify that", pageWidth / 2, 80, { align: "center" });
+
+    doc.setTextColor(15, 23, 42);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(36);
+    doc.text(studentName.toUpperCase(), pageWidth / 2, 100, { align: "center" });
+
+    doc.setTextColor(100, 116, 139);
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(18);
+    doc.text("has successfully completed the requirements for", pageWidth / 2, 120, { align: "center" });
+
+    doc.setTextColor(234, 179, 8);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(26);
+    doc.text(name, pageWidth / 2, 140, { align: "center" });
+
+    // Date
+    const date = cert.issue_date ? format(parseISO(cert.issue_date), "MMMM do, yyyy") : format(new Date(), "MMMM do, yyyy");
+    
+    // Footer
+    doc.setTextColor(71, 85, 105);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text("EDWORLD CO.", pageWidth / 4, 175, { align: "center" });
+    
+    doc.setFontSize(10);
+    doc.text("OFFICIAL LEARNING PORTAL", pageWidth / 4, 182, { align: "center" });
+
+    doc.setFontSize(14);
+    doc.text("VERIFIED CREDENTIAL", (pageWidth * 3) / 4, 175, { align: "center" });
+    doc.setFontSize(10);
+    doc.text(`Credential ID: ${cert.credential_id || 'N/A'}`, (pageWidth * 3) / 4, 182, { align: "center" });
+
+    // Logo Placeholder or Design
+    doc.setDrawColor(234, 179, 8);
+    doc.setLineWidth(0.5);
+    doc.circle(pageWidth / 2, 175, 12);
+    doc.setFontSize(8);
+    doc.text("SEAL", pageWidth / 2, 176.5, { align: "center" });
+
+    doc.save(`EdWorld-Certificate-${name.replace(/\s+/g, '-')}.pdf`);
+    toast.success("Certificate downloaded!");
+  };
+
   const isExpired = (expiryDate: string | null) => {
     if (!expiryDate) return false;
     return isBefore(parseISO(expiryDate), new Date());
@@ -181,6 +264,17 @@ export function CertificationsSection({ userId, isOwnProfile = false }: Certific
                   </div>
                   {isOwnProfile && (
                     <div className="flex gap-1">
+                      {cert.issuing_organization.includes("EdWorld") && (
+                        <Button 
+                          size="icon" 
+                          variant="ghost" 
+                          className="h-8 w-8 text-amber-500 hover:text-amber-600 hover:bg-amber-50" 
+                          onClick={() => downloadEdworldPDF(cert)}
+                          title="Download Certificate"
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                      )}
                       <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-400 hover:text-primary hover:bg-white/5" onClick={() => handleOpenDialog(cert)}>
                         <Pencil className="h-4 w-4" />
                       </Button>

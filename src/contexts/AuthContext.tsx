@@ -8,6 +8,10 @@ interface AuthContextType {
   loading: boolean;
   signUp: (email: string, password: string, fullName: string, phone?: string, referralCode?: string) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signInWithGoogle: () => Promise<{ error: Error | null }>;
+  signInWithGithub: () => Promise<{ error: Error | null }>;
+  signInWithApple: () => Promise<{ error: Error | null }>;
+  signInWithMicrosoft: () => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -91,12 +95,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error };
   };
 
+  const signInWithGoogle = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/dashboard`
+      }
+    });
+    return { error };
+  };
+
+  const signInWithGithub = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'github',
+      options: {
+        redirectTo: `${window.location.origin}/dashboard`
+      }
+    });
+    return { error };
+  };
+
+  const signInWithApple = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'apple',
+      options: {
+        redirectTo: `${window.location.origin}/dashboard`
+      }
+    });
+    return { error };
+  };
+
+  const signInWithMicrosoft = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'azure',
+      options: {
+        redirectTo: `${window.location.origin}/dashboard`
+      }
+    });
+    return { error };
+  };
+
   const signOut = async () => {
     await supabase.auth.signOut();
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, signUp, signIn, signOut }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      session, 
+      loading, 
+      signUp, 
+      signIn, 
+      signInWithGoogle, 
+      signInWithGithub, 
+      signInWithApple,
+      signInWithMicrosoft,
+      signOut 
+    }}>
       {children}
     </AuthContext.Provider>
   );
@@ -111,6 +166,10 @@ export function useAuth(): AuthContextType {
       loading: true,
       signUp: async () => ({ error: new Error("AuthProvider not ready") }),
       signIn: async () => ({ error: new Error("AuthProvider not ready") }),
+      signInWithGoogle: async () => ({ error: new Error("AuthProvider not ready") }),
+      signInWithGithub: async () => ({ error: new Error("AuthProvider not ready") }),
+      signInWithApple: async () => ({ error: new Error("AuthProvider not ready") }),
+      signInWithMicrosoft: async () => ({ error: new Error("AuthProvider not ready") }),
       signOut: async () => {},
     };
   }

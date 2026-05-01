@@ -8,10 +8,12 @@ serve(async (req: Request) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  try {
+    const requestId = crypto.randomUUID();
+    console.log(`[${requestId}] Starting admin request`);
+
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+      return createErrorResponse("Unauthorized", 401, requestId);
     }
 
     const token = authHeader.replace("Bearer ", "");
@@ -25,7 +27,8 @@ serve(async (req: Request) => {
     const { data: userData, error: authError } = await supabaseClient.auth.getUser(token);
 
     if (authError || !userData?.user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+      console.error(`[${requestId}] Auth error:`, authError);
+      return createErrorResponse("Unauthorized", 401, requestId);
     }
 
     // Check if user is admin
@@ -36,7 +39,8 @@ serve(async (req: Request) => {
       .single();
 
     if (!profile?.roles?.includes('admin')) {
-      return new Response(JSON.stringify({ error: "Forbidden: Admins only" }), { status: 403, headers: corsHeaders });
+      console.warn(`[${requestId}] Forbidden: User ${userData.user.id} is not an admin`);
+      return createErrorResponse("Forbidden: Admins only", 403, requestId);
     }
 
     const { prompt } = await req.json();
@@ -95,10 +99,11 @@ serve(async (req: Request) => {
     const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
 
     if (!toolCall?.function?.arguments) {
-      return new Response(JSON.stringify({ 
+      console.warn(`[${requestId}] AI could not determine action. Content:`, aiData.choices?.[0]?.message?.content);
+      return createStandardResponse({ 
         message: "Gemini could not determine a valid database action from your prompt.",
         raw: aiData.choices?.[0]?.message?.content
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }, requestId);
     }
 
     const args = JSON.parse(toolCall.function.arguments);
@@ -132,16 +137,17 @@ serve(async (req: Request) => {
       resultMessage = "Action not supported or parsed correctly.";
     }
 
-    return new Response(JSON.stringify({ success: true, message: resultMessage, data: args }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" }
-    });
-
+    console.log(`[${requestId}] ${resultMessage}`);
+    return createStandardResponse({ message: resultMessage, data: args }, requestId);
   } catch (error) {
-    console.error("Gemini Admin Error:", error);
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), { 
-      status: 500, 
-      headers: { ...corsHeaders, "Content-Type": "application/json" } 
-    });
+    console.error(`[${requestId}] Gemini Admin Error:`, error);
+    return createErrorResponse(
+      error instanceof Error ? error.message : String(error),
+      500,
+      requestId,
+      true,
+      error instanceof Error ? error.stack : undefined
+    );
   }
 });
 

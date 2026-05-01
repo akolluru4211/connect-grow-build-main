@@ -1,7 +1,6 @@
-/// <reference lib="deno.ns" />
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, callAIWithFallback } from "../_shared/ai-utils.ts";
+import { corsHeaders, callAIWithFallback, createStandardResponse, createErrorResponse } from "../_shared/ai-utils.ts";
 
 interface EmailRequest {
   purpose: string;
@@ -14,22 +13,26 @@ interface EmailRequest {
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const requestId = crypto.randomUUID();
+  console.log(`[${requestId}] Starting email generation request`);
+
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return createErrorResponse("Unauthorized", 401, requestId);
     }
 
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: authHeader } } });
     const token = authHeader.replace("Bearer ", "");
     const { data: userData, error: authError } = await supabase.auth.getUser(token);
     if (authError || !userData?.user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      console.error(`[${requestId}] Auth error:`, authError);
+      return createErrorResponse("Unauthorized", 401, requestId);
     }
 
     const { purpose, tone, recipient, context, keyPoints } = await req.json() as EmailRequest;
     if (!purpose) {
-      return new Response(JSON.stringify({ error: "Purpose is required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return createErrorResponse("Purpose is required", 400, requestId);
     }
 
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
@@ -66,7 +69,7 @@ ${keyPoints && keyPoints.length > 0 ? `Key Points to Include:\n${keyPoints.map((
     });
 
     if (!response.ok) {
-      return response; // callAIWithFallback already returns a structured error Response
+      return response; 
     }
 
     const data = await response.json();
@@ -84,16 +87,17 @@ ${keyPoints && keyPoints.length > 0 ? `Key Points to Include:\n${keyPoints.map((
       body = lines.slice(2).join("\n").trim();
     }
 
-    return new Response(JSON.stringify({ subject, body, fullContent: emailContent }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    console.log(`[${requestId}] Email generation successful`);
+    return createStandardResponse({ subject, body, fullContent: emailContent }, requestId);
   } catch (error: unknown) {
-    console.error("Error in email-writer function:", error);
-    return new Response(JSON.stringify({ 
-      error: error instanceof Error ? error.message : "Unknown error",
-      details: error instanceof Error ? error.stack : undefined
-    }), { 
-      status: 500, 
-      headers: { ...corsHeaders, "Content-Type": "application/json" } 
-    });
+    console.error(`[${requestId}] Error in email-writer function:`, error);
+    return createErrorResponse(
+      error instanceof Error ? error.message : String(error),
+      500,
+      requestId,
+      true,
+      error instanceof Error ? error.stack : undefined
+    );
   }
 });
 

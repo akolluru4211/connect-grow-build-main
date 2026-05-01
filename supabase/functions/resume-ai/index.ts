@@ -1,22 +1,24 @@
-/// <reference lib="deno.ns" />
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, callAIWithFallback, parseAIJSON } from "../_shared/ai-utils.ts";
+import { corsHeaders, callAIWithFallback, parseAIJSON, createStandardResponse, createErrorResponse } from "../_shared/ai-utils.ts";
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const requestId = crypto.randomUUID();
+  console.log(`[${requestId}] Starting resume-ai request`);
+
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return createErrorResponse("Unauthorized", 401, requestId);
     }
 
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: authHeader } } });
     const token = authHeader.replace("Bearer ", "");
     const { data: userData, error: authError } = await supabase.auth.getUser(token);
     if (authError || !userData?.user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return createErrorResponse("Unauthorized", 401, requestId);
     }
 
     const body = await req.json();
@@ -62,7 +64,8 @@ serve(async (req: Request) => {
     });
 
     if (!response.ok) {
-      return response; // callAIWithFallback already returns a structured error Response
+      console.error(`[${requestId}] AI provider error:`, response.status);
+      return response; 
     }
 
     const aiData = await response.json();
@@ -78,27 +81,18 @@ serve(async (req: Request) => {
         result = parseAIJSON(content);
       }
     } catch (e) {
-      console.error("Failed to parse AI response:", content);
-      // If it's just a summary and not structured JSON, we can return it as a simple object
+      console.error(`[${requestId}] Failed to parse AI response:`, content);
       if (type === "summary" && content) {
         result = { summary: content, keywords: [] };
       } else {
-        throw new Error("Invalid AI response format: " + content.substring(0, 100));
+        throw new Error("Invalid AI response format");
       }
     }
 
-    return new Response(JSON.stringify(result), { 
-      headers: { ...corsHeaders, "Content-Type": "application/json" } 
-    });
+    return createStandardResponse(result, requestId);
   } catch (error) {
-    console.error("resume-ai error:", error);
-    return new Response(JSON.stringify({ 
-      error: error instanceof Error ? error.message : "Unknown error",
-      details: error instanceof Error ? error.stack : undefined
-    }), { 
-      status: 500, 
-      headers: { ...corsHeaders, "Content-Type": "application/json" } 
-    });
+    console.error(`[${requestId}] resume-ai error:`, error);
+    return createErrorResponse(error instanceof Error ? error.message : String(error), 500, requestId);
   }
 });
 

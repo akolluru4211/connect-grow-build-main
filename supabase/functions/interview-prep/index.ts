@@ -1,14 +1,29 @@
-/// <reference lib="deno.ns" />
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { corsHeaders, callAIWithFallback, parseAIJSON } from "../_shared/ai-utils.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { corsHeaders, callAIWithFallback, parseAIJSON, createStandardResponse, createErrorResponse } from "../_shared/ai-utils.ts";
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const requestId = crypto.randomUUID();
+  console.log(`[${requestId}] Starting interview-prep request`);
+
   try {
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return createErrorResponse("Unauthorized", 401, requestId);
+    }
+
+    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: authHeader } } });
+    const token = authHeader.replace("Bearer ", "");
+    const { data: userData, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !userData?.user) {
+      return createErrorResponse("Unauthorized", 401, requestId);
+    }
+
     const { jobTitle, jobDescription, company, difficulty = "medium", questionCount = 5 } = await req.json();
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured");
+    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured in secrets.");
 
     const systemPrompt = `You are an expert interview coach with 20+ years of experience helping candidates prepare for job interviews. Generate realistic, challenging interview questions that would actually be asked for this role. Include a mix of behavioral, technical, and situational questions. For each question, provide:
 1. The question itself
@@ -25,7 +40,7 @@ Job Title: ${jobTitle}
 Company: ${company || "Not specified"}
 Job Description: ${jobDescription}
 
-Make the questions specific to this role and company culture. Include questions that test both technical skills and soft skills relevant to the position.`;
+Make the questions specific to this role and company culture. Include questions that test both technical skills and soft skills relevant to the position. Respond strictly in valid JSON format using the tool provided.`;
 
     const toolDef = {
       type: "function",
@@ -59,6 +74,8 @@ Make the questions specific to this role and company culture. Include questions 
       }
     };
 
+    console.log(`[${requestId}] Generating ${questionCount} questions for ${jobTitle}...`);
+
     const response = await callAIWithFallback(GEMINI_API_KEY, {
       messages: [
         { role: "system", content: systemPrompt },
@@ -69,6 +86,7 @@ Make the questions specific to this role and company culture. Include questions 
     });
 
     if (!response.ok) {
+      console.error(`[${requestId}] AI provider error:`, response.status);
       return response;
     }
 
@@ -76,16 +94,13 @@ Make the questions specific to this role and company culture. Include questions 
     const toolCall = aiResult.choices?.[0]?.message?.tool_calls?.[0];
     const rawContent = toolCall?.function?.arguments || aiResult.choices?.[0]?.message?.content || "";
     
-    if (!rawContent) throw new Error("Invalid AI response format");
+    if (!rawContent) throw new Error("The AI service returned an empty response. Please try again.");
 
     const result = parseAIJSON(rawContent);
-    return new Response(JSON.stringify(result), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return createStandardResponse(result, requestId);
   } catch (error) {
-    console.error("Interview prep error:", error);
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    console.error(`[${requestId}] Interview prep error:`, error);
+    return createErrorResponse(error instanceof Error ? error.message : String(error), 500, requestId);
   }
 });
 

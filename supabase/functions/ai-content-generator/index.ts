@@ -1,19 +1,43 @@
-/// <reference lib="deno.ns" />
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.89.0";
-import { corsHeaders, callAIWithFallback, parseAIJSON } from "../_shared/ai-utils.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.40.0";
+import { corsHeaders, callAIWithFallback, parseAIJSON, createStandardResponse, createErrorResponse } from "../_shared/ai-utils.ts";
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  try {
-    const { contentType } = await req.json();
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured");
+  const requestId = crypto.randomUUID();
+  console.log(`[${requestId}] Starting content generation request`);
 
-    const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+  try {
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return createErrorResponse("Unauthorized", 401, requestId);
+    }
+
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: userData, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !userData?.user) {
+      console.error(`[${requestId}] Auth error:`, authError);
+      return createErrorResponse("Unauthorized", 401, requestId);
+    }
+
+    // Note: We use service role for DB operations that might bypass RLS or need higher permissions
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+
+    const body = await req.json();
+    const { contentType } = body;
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    
+    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured");
 
     const prompts: Record<string, string> = {
       blog: `You are an expert career advisor and educational content writer. Generate a helpful, engaging blog post for college students about career development, skill building, or professional growth. Include: A catchy, SEO-friendly title, 3-4 paragraphs of valuable content, practical tips and actionable advice, encouraging and motivational tone. Format your response as JSON: {"title": "...", "content": "..."}`,
@@ -32,7 +56,9 @@ serve(async (req: Request) => {
     });
 
     if (!aiResponse.ok) {
-      return aiResponse;
+      const errorText = await aiResponse.text();
+      console.error(`[${requestId}] AI provider error:`, errorText);
+      return createErrorResponse("AI provider error", aiResponse.status, requestId, true, errorText);
     }
 
     const aiData = await aiResponse.json();
@@ -45,21 +71,25 @@ serve(async (req: Request) => {
       parsedContent = { title: "Daily Update", content: rawContent };
     }
 
-    const { data, error } = await supabase.from("ai_generated_content").insert({
+    const { data, error } = await supabaseAdmin.from("ai_generated_content").insert({
       content_type: contentType,
       title: parsedContent.title,
       content: parsedContent.content,
       is_published: true,
       published_at: new Date().toISOString(),
-      metadata: { generated_at: new Date().toISOString() }
+      metadata: { generated_at: new Date().toISOString(), requestId }
     }).select().single();
 
-    if (error) { console.error("Database error:", error); throw error; }
+    if (error) { 
+      console.error(`[${requestId}] Database error:`, error); 
+      throw error; 
+    }
 
-    return new Response(JSON.stringify({ success: true, data }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    console.log(`[${requestId}] Content generated and saved successfully:`, data.id);
+    return createStandardResponse({ data }, requestId);
   } catch (error) {
-    console.error("Content generation error:", error);
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    console.error(`[${requestId}] Content generation error:`, error);
+    return createErrorResponse(error instanceof Error ? error.message : String(error), 500, requestId);
   }
 });
 

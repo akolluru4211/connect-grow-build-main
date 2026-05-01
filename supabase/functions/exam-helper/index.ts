@@ -1,13 +1,28 @@
-/// <reference lib="deno.ns" />
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { callAIWithFallback, parseAIJSON, corsHeaders } from "../_shared/ai-utils.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { callAIWithFallback, parseAIJSON, corsHeaders, createStandardResponse, createErrorResponse } from "../_shared/ai-utils.ts";
 
 const handler = async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  const requestId = crypto.randomUUID();
+  console.log(`[${requestId}] Starting exam helper request`);
+
   try {
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return createErrorResponse("Unauthorized", 401, requestId);
+    }
+
+    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: authHeader } } });
+    const token = authHeader.replace("Bearer ", "");
+    const { data: userData, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !userData?.user) {
+      return createErrorResponse("Unauthorized", 401, requestId);
+    }
+
     const { action, subject, topic, currentLevel, inputData } = await req.json();
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured");
@@ -42,6 +57,7 @@ const handler = async (req: Request): Promise<Response> => {
     });
 
     if (!response.ok) {
+      console.error(`[${requestId}] AI provider error:`, response.status);
       return response;
     }
 
@@ -49,16 +65,17 @@ const handler = async (req: Request): Promise<Response> => {
     const content = data.choices?.[0]?.message?.content || "";
     const result = parseAIJSON(content);
 
-    return new Response(JSON.stringify(result), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200,
-    });
+    console.log(`[${requestId}] Exam helper request successful`);
+    return createStandardResponse(result, requestId);
   } catch (error: any) {
-    console.error('Error in exam-helper:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 500,
-    });
+    console.error(`[${requestId}] Error in exam-helper:`, error);
+    return createErrorResponse(
+      error instanceof Error ? error.message : String(error),
+      500,
+      requestId,
+      true,
+      error instanceof Error ? error.stack : undefined
+    );
   }
 };
 

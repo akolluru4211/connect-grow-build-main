@@ -2,13 +2,16 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 
-import { corsHeaders } from "../_shared/ai-utils.ts";
+import { createStandardResponse, createErrorResponse, corsHeaders } from "../_shared/ai-utils.ts";
 
 interface NewsletterRequest {
   email: string;
 }
 
 const handler = async (req: Request): Promise<Response> => {
+  const requestId = crypto.randomUUID();
+  console.log(`[${requestId}] Newsletter welcome request received`);
+
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -16,23 +19,22 @@ const handler = async (req: Request): Promise<Response> => {
   try {
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
     if (!RESEND_API_KEY) {
-      return new Response(JSON.stringify({ error: "RESEND_API_KEY not configured" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.error(`[${requestId}] Missing RESEND_API_KEY`);
+      return createErrorResponse("RESEND_API_KEY not configured", 500, requestId);
     }
 
     const resend = new Resend(RESEND_API_KEY);
     const siteUrl = Deno.env.get("SITE_URL") || "https://edworldco.com";
 
-    const { email }: NewsletterRequest = await req.json();
+    const body = await req.json();
+    const { email }: NewsletterRequest = body;
 
     if (!email) {
-      return new Response(JSON.stringify({ error: "Email is required" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.error(`[${requestId}] Email is required`);
+      return createErrorResponse("Email is required", 400, requestId);
     }
 
-    console.log("Sending welcome email to:", email);
+    console.log(`[${requestId}] Sending welcome email to: ${email}`);
 
     const emailResponse = await resend.emails.send({
       from: "EDWORLD CO. <onboarding@resend.dev>",
@@ -106,17 +108,13 @@ const handler = async (req: Request): Promise<Response> => {
       `,
     });
 
-    console.log("Welcome email sent successfully:", emailResponse);
-
-    return new Response(JSON.stringify({ success: true, emailResponse }), {
-      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.log(`[${requestId}] Welcome email sent successfully`, emailResponse);
+    return createStandardResponse({ emailResponse }, requestId);
   } catch (error: any) {
-    console.error("Error sending welcome email:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.error(`[${requestId}] Error sending welcome email:`, error);
+    return createErrorResponse(error.message, 500, requestId);
   }
 };
 
 serve(handler);
+

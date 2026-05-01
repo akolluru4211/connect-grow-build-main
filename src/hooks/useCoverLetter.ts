@@ -1,6 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { safeInvoke } from "@/lib/gemini";
 
 interface CoverLetterInput {
   jobTitle: string;
@@ -26,13 +26,7 @@ interface CoverLetterResult {
 export function useGenerateCoverLetter() {
   return useMutation({
     mutationFn: async (input: CoverLetterInput): Promise<CoverLetterResult> => {
-      const { data, error } = await supabase.functions.invoke("cover-letter", {
-        body: input,
-      });
-
-      if (error) throw error;
-      if (data.error) throw new Error(data.error);
-      return data;
+      return await safeInvoke<CoverLetterResult>("cover-letter", input);
     },
     onSuccess: () => {
       toast.success("Cover letter generated successfully!");

@@ -1,22 +1,25 @@
-/// <reference lib="deno.ns" />
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, callAIWithFallback } from "../_shared/ai-utils.ts";
+import { corsHeaders, callAIWithFallback, createStandardResponse, createErrorResponse } from "../_shared/ai-utils.ts";
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const requestId = crypto.randomUUID();
+  console.log(`[${requestId}] Starting blog AI suggestions request`);
+
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return createErrorResponse("Unauthorized", 401, requestId);
     }
 
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: authHeader } } });
     const token = authHeader.replace("Bearer ", "");
     const { data: userData, error: authError } = await supabase.auth.getUser(token);
     if (authError || !userData?.user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      console.error(`[${requestId}] Auth error:`, authError);
+      return createErrorResponse("Unauthorized", 401, requestId);
     }
 
     const { content, excerpt, type } = await req.json();
@@ -58,6 +61,7 @@ serve(async (req: Request) => {
     const response = await callAIWithFallback(GEMINI_API_KEY, body);
 
     if (!response.ok) {
+      console.error(`[${requestId}] AI provider error:`, response.status);
       return response;
     }
 
@@ -65,14 +69,16 @@ serve(async (req: Request) => {
     const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
     if (toolCall?.function?.arguments) {
       const result = JSON.parse(toolCall.function.arguments);
-      return new Response(JSON.stringify(result), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      console.log(`[${requestId}] Blog suggestions successful (tool call)`);
+      return createStandardResponse(result, requestId);
     }
 
     const content_response = data.choices?.[0]?.message?.content;
-    return new Response(JSON.stringify({ raw: content_response }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    console.log(`[${requestId}] Blog suggestions successful (content)`);
+    return createStandardResponse({ raw: content_response }, requestId);
   } catch (error) {
-    console.error("Error in blog-ai-suggestions:", error);
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    console.error(`[${requestId}] Error in blog-ai-suggestions:`, error);
+    return createErrorResponse(error, 500, requestId);
   }
 });
 

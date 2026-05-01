@@ -3,7 +3,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-import { corsHeaders } from "../_shared/ai-utils.ts";
+import { createStandardResponse, createErrorResponse, corsHeaders } from "../_shared/ai-utils.ts";
 
 const logoUrl = "https://scwliaddydtnadqvkahk.supabase.co/storage/v1/object/public/email-assets/edworld-logo.png";
 
@@ -86,6 +86,9 @@ const buildEmailHTML = (userName: string, greeting: string, cta: string, ctaDesc
 `;
 
 const handler = async (req: Request): Promise<Response> => {
+  const requestId = crypto.randomUUID();
+  console.log(`[${requestId}] Feature announcement request received`);
+
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -93,9 +96,8 @@ const handler = async (req: Request): Promise<Response> => {
   try {
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
     if (!RESEND_API_KEY) {
-      return new Response(JSON.stringify({ error: "Email service not configured. Missing RESEND_API_KEY." }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.error(`[${requestId}] Missing RESEND_API_KEY`);
+      return createErrorResponse("Email service not configured. Missing RESEND_API_KEY.", 500, requestId);
     }
 
     const resend = new Resend(RESEND_API_KEY);
@@ -105,9 +107,8 @@ const handler = async (req: Request): Promise<Response> => {
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.error(`[${requestId}] Unauthorized: No auth header`);
+      return createErrorResponse("Unauthorized", 401, requestId);
     }
 
     const supabaseAuth = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
@@ -116,9 +117,8 @@ const handler = async (req: Request): Promise<Response> => {
     const token = authHeader.replace("Bearer ", "");
     const { data: userData, error: authError } = await supabaseAuth.auth.getUser(token);
     if (authError || !userData?.user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.error(`[${requestId}] Unauthorized: Invalid user token`, authError);
+      return createErrorResponse("Unauthorized", 401, requestId);
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -130,9 +130,8 @@ const handler = async (req: Request): Promise<Response> => {
       .maybeSingle();
 
     if (!roleData) {
-      return new Response(JSON.stringify({ error: "Admin access required" }), {
-        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.error(`[${requestId}] Forbidden: Admin access required for user ${userData.user.id}`);
+      return createErrorResponse("Admin access required", 403, requestId);
     }
 
     let customSubject = "🚀 Discover All the Powerful Features on EdWorld!";
@@ -152,11 +151,12 @@ const handler = async (req: Request): Promise<Response> => {
       .select("id, email, full_name");
 
     if (profilesError || !profiles) {
+      console.error(`[${requestId}] Failed to fetch profiles`, profilesError);
       throw new Error("Failed to fetch profiles: " + profilesError?.message);
     }
 
     const usersWithEmail = profiles.filter((p: any) => p.email);
-    console.log(`Sending feature announcement to ${usersWithEmail.length} users`);
+    console.log(`[${requestId}] Sending feature announcement to ${usersWithEmail.length} users`);
 
     let sent = 0;
     let failed = 0;
@@ -173,7 +173,7 @@ const handler = async (req: Request): Promise<Response> => {
             .maybeSingle();
 
           if (settings?.email_notifications === false) {
-            console.log(`Skipping ${profile.email} - notifications disabled`);
+            console.log(`[${requestId}] Skipping ${profile.email} - notifications disabled`);
             return { skipped: true };
           }
 
@@ -211,18 +211,13 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
-    console.log(`Feature announcement sent: ${sent} success, ${failed} failed`);
-
-    return new Response(
-      JSON.stringify({ success: true, sent, failed, total: usersWithEmail.length, errors: errors.slice(0, 5) }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    console.log(`[${requestId}] Feature announcement complete: ${sent} success, ${failed} failed`);
+    return createStandardResponse({ sent, failed, total: usersWithEmail.length, errors: errors.slice(0, 5) }, requestId);
   } catch (error: any) {
-    console.error("Error in feature-announcement:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.error(`[${requestId}] Error in feature-announcement:`, error);
+    return createErrorResponse(error.message, 500, requestId);
   }
 };
 
 serve(handler);
+

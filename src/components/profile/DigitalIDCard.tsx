@@ -52,10 +52,6 @@ export function DigitalIDCard({ profile, idNumber, edworldEmail, initials, class
             }}
             className="absolute inset-0 w-full h-full bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-[2rem] sm:rounded-[2.5rem] p-6 sm:p-8 shadow-2xl border border-slate-700 flex flex-col justify-between overflow-hidden"
           >
-            {/* Background Decorations */}
-            <div className="absolute top-0 right-0 p-6 opacity-10">
-              <ShieldCheck size={180} className="text-white" />
-            </div>
             <div className="absolute -left-20 -bottom-20 w-64 h-64 bg-primary/20 rounded-full blur-3xl" />
             <div className="absolute -right-20 top-20 w-64 h-64 bg-blue-500/20 rounded-full blur-3xl" />
 
@@ -116,17 +112,8 @@ export function DigitalIDCard({ profile, idNumber, edworldEmail, initials, class
               WebkitBackfaceVisibility: "hidden",
               transform: "rotateY(180deg) translateZ(1px)",
             }}
-            className="absolute inset-0 w-full h-full bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-[2rem] sm:rounded-[2.5rem] shadow-2xl border border-primary/40 flex flex-col items-center justify-between overflow-hidden py-8 sm:py-10"
+            className="absolute inset-0 w-full h-full bg-slate-900 rounded-[2rem] sm:rounded-[2.5rem] shadow-2xl border border-primary/40 flex flex-col items-center justify-between overflow-hidden py-8 sm:py-10"
           >
-            {/* Background Decorations */}
-            <div className="absolute inset-0 opacity-5 pointer-events-none">
-              <div className="w-full h-full" style={{
-                backgroundImage: "repeating-linear-gradient(45deg, #eab308 0, #eab308 1px, transparent 0, transparent 50%)",
-                backgroundSize: "20px 20px",
-              }} />
-            </div>
-            <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-primary via-amber-400 to-primary rounded-t-[2.5rem]" />
-            <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-gradient-to-r from-primary via-amber-400 to-primary rounded-b-[2.5rem]" />
 
             <div className="relative z-10 flex flex-col items-center gap-4 sm:gap-6 px-6 h-full w-full">
               <div className="text-center">
@@ -144,14 +131,6 @@ export function DigitalIDCard({ profile, idNumber, edworldEmail, initials, class
                   fgColor="#0f172a"
                   level="H"
                   includeMargin={false}
-                  imageSettings={{
-                    src: "/edworld-logo.png",
-                    x: undefined,
-                    y: undefined,
-                    height: 32,
-                    width: 32,
-                    excavate: true,
-                  }}
                 />
               </div>
 

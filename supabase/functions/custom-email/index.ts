@@ -2,7 +2,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders } from "../_shared/ai-utils.ts";
+import { corsHeaders, createStandardResponse, createErrorResponse } from "../_shared/ai-utils.ts";
 
 const logoUrl = "https://scwliaddydtnadqvkahk.supabase.co/storage/v1/object/public/email-assets/edworld-logo.png";
 
@@ -52,12 +52,12 @@ const handler = async (req: Request): Promise<Response> => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  try {
+    const requestId = crypto.randomUUID();
+    console.log(`[${requestId}] Starting custom email request`);
+
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
     if (!RESEND_API_KEY) {
-      return new Response(JSON.stringify({ error: "Email service not configured. Missing RESEND_API_KEY." }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return createErrorResponse("Email service not configured. Missing RESEND_API_KEY.", 500, requestId);
     }
 
     const resend = new Resend(RESEND_API_KEY);
@@ -67,9 +67,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return createErrorResponse("Unauthorized", 401, requestId);
     }
 
     const supabaseAuth = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
@@ -78,9 +76,7 @@ const handler = async (req: Request): Promise<Response> => {
     const token = authHeader.replace("Bearer ", "");
     const { data: userData, error: authError } = await supabaseAuth.auth.getUser(token);
     if (authError || !userData?.user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return createErrorResponse("Unauthorized", 401, requestId);
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -89,18 +85,14 @@ const handler = async (req: Request): Promise<Response> => {
       .eq("user_id", userData.user.id).eq("role", "admin").maybeSingle();
 
     if (!roleData) {
-      return new Response(JSON.stringify({ error: "Admin access required" }), {
-        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return createErrorResponse("Admin access required", 403, requestId);
     }
 
     const body = await req.json();
     const { subject, messageBody, ctaText, ctaLink, sendTo } = body;
 
     if (!subject || !messageBody) {
-      return new Response(JSON.stringify({ error: "Subject and message body are required" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return createErrorResponse("Subject and message body are required", 400, requestId);
     }
 
     let recipients: { id: string; email: string; full_name: string | null }[] = [];
@@ -176,17 +168,12 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
-    console.log(`Custom email: ${sent} sent, ${failed} failed`);
+    console.log(`[${requestId}] Custom email: ${sent} sent, ${failed} failed`);
 
-    return new Response(
-      JSON.stringify({ success: true, sent, failed, total: recipients.length, errors: errors.slice(0, 5) }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return createStandardResponse({ sent, failed, total: recipients.length, errors: errors.slice(0, 5) }, requestId);
   } catch (error: any) {
-    console.error("Error in custom-email:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.error(`[${requestId}] Error in custom-email:`, error);
+    return createErrorResponse(error.message, 500, requestId);
   }
 };
 

@@ -1,8 +1,7 @@
-/// <reference lib="deno.ns" />
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders } from "../_shared/ai-utils.ts";
+import { corsHeaders, createStandardResponse, createErrorResponse } from "../_shared/ai-utils.ts";
 
 interface NotificationRequest {
   type: "new_message" | "job_match" | "connection_request" | "connection_accepted" | "application_status" | "job_application" | "mentorship_request" | "achievement_unlocked" | "general_notification";
@@ -167,17 +166,18 @@ const getEmailContent = (type: string, data: Record<string, any>, siteUrl: strin
   }
 };
 
-const handler = async (req: Request): Promise<Response> => {
+serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const requestId = crypto.randomUUID();
+  console.log(`[${requestId}] Starting send-notification request`);
+
   try {
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
     if (!RESEND_API_KEY) {
-      return new Response(JSON.stringify({ error: "RESEND_API_KEY not configured" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return createErrorResponse("RESEND_API_KEY not configured", 500, requestId);
     }
 
     const resend = new Resend(RESEND_API_KEY);
@@ -191,9 +191,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (!isInternalCall) {
       if (!authHeader?.startsWith("Bearer ")) {
-        return new Response(JSON.stringify({ error: "Unauthorized" }), {
-          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return createErrorResponse("Unauthorized", 401, requestId);
       }
 
       const authClient = createClient(supabaseUrl, supabaseAnonKey, {
@@ -204,18 +202,16 @@ const handler = async (req: Request): Promise<Response> => {
       const { data: userData, error: authError } = await authClient.auth.getUser(token);
 
       if (authError || !userData?.user) {
-        console.error("Auth validation failed:", authError);
-        return new Response(JSON.stringify({ error: "Unauthorized" }), {
-          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        console.error(`[${requestId}] Auth validation failed:`, authError);
+        return createErrorResponse("Unauthorized", 401, requestId);
       }
-      console.log("Authenticated user:", userData.user.id);
+      console.log(`[${requestId}] Authenticated user:`, userData.user.id);
     } else {
-      console.log("Internal trigger call");
+      console.log(`[${requestId}] Internal trigger call`);
     }
 
     const { type, recipientId, data }: NotificationRequest = await req.json();
-    console.log("Processing notification:", { type, recipientId, data });
+    console.log(`[${requestId}] Processing notification:`, { type, recipientId, data });
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -226,10 +222,8 @@ const handler = async (req: Request): Promise<Response> => {
       .single();
 
     if (profileError || !profile?.email) {
-      console.error("Failed to get recipient profile:", profileError);
-      return new Response(JSON.stringify({ error: "Recipient not found or no email" }), {
-        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.error(`[${requestId}] Failed to get recipient profile:`, profileError);
+      return createErrorResponse("Recipient not found or no email", 404, requestId);
     }
 
     const { data: settings } = await supabase
@@ -240,34 +234,29 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (settings) {
       if (type === "new_message" && settings.message_notifications === false) {
-        console.log("User has disabled message notifications");
-        return new Response(JSON.stringify({ skipped: true }), {
-          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        console.log(`[${requestId}] User has disabled message notifications`);
+        return createStandardResponse({ skipped: true, reason: "message_notifications_disabled" }, requestId);
       }
       if ((type === "job_match" || type === "application_status") && settings.job_alerts === false) {
-        console.log("User has disabled job alerts");
-        return new Response(JSON.stringify({ skipped: true }), {
-          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        console.log(`[${requestId}] User has disabled job alerts`);
+        return createStandardResponse({ skipped: true, reason: "job_alerts_disabled" }, requestId);
       }
       if (settings.email_notifications === false) {
-        console.log("User has disabled all email notifications");
-        return new Response(JSON.stringify({ skipped: true }), {
-          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        console.log(`[${requestId}] User has disabled all email notifications`);
+        return createStandardResponse({ skipped: true, reason: "all_email_notifications_disabled" }, requestId);
       }
     }
 
     const emailContent = getEmailContent(type, data, siteUrl);
 
+    // Track notification in DB
     await supabase.from("email_notifications").insert({
       user_id: recipientId,
       email_type: type,
       recipient_email: profile.email,
       subject: emailContent.subject,
       status: "pending",
-      metadata: data,
+      metadata: { ...data, requestId },
     });
 
     const emailResponse = await resend.emails.send({
@@ -277,7 +266,7 @@ const handler = async (req: Request): Promise<Response> => {
       html: emailContent.html,
     });
 
-    console.log("Email sent:", emailResponse);
+    console.log(`[${requestId}] Email sent:`, emailResponse);
 
     await supabase
       .from("email_notifications")
@@ -288,15 +277,9 @@ const handler = async (req: Request): Promise<Response> => {
       .order("created_at", { ascending: false })
       .limit(1);
 
-    return new Response(JSON.stringify({ success: true, emailResponse }), {
-      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return createStandardResponse({ success: true, emailResponse }, requestId);
   } catch (error: any) {
-    console.error("Error in send-notification:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.error(`[${requestId}] Error in send-notification:`, error);
+    return createErrorResponse(error, 500, requestId);
   }
-};
-
-serve(handler);
+});

@@ -1,6 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { safeInvoke } from "@/lib/gemini";
 
 interface UserProfileData {
   name?: string;
@@ -43,28 +43,17 @@ export function useGenerateResumeFromJob() {
       jobDescription,
       userData,
     }: GenerateFromJobRequest): Promise<GeneratedResumeData | null> => {
-      const { data, error } = await supabase.functions.invoke("resume-ai", {
-        body: {
+      try {
+        return await safeInvoke<GeneratedResumeData>("resume-ai", {
           type: "generate_from_job",
           jobTitle,
           jobDescription,
           data: userData,
-        },
-      });
-
-      if (error) {
-        console.error("Generate resume error:", error);
-        if (error.message?.includes("429")) {
-          toast.error("Rate limit exceeded. Please try again later.");
-        } else if (error.message?.includes("402")) {
-          toast.error("AI credits exhausted. Please add funds.");
-        } else {
-          toast.error("Failed to generate resume");
-        }
+        });
+      } catch (error: any) {
+        toast.error(error.message || "Failed to generate resume");
         return null;
       }
-
-      return data as GeneratedResumeData;
     },
     onSuccess: (data) => {
       if (data) {

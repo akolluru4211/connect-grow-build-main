@@ -1,15 +1,30 @@
-/// <reference lib="deno.ns" />
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { corsHeaders, callAIWithFallback, parseAIJSON } from "../_shared/ai-utils.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { corsHeaders, callAIWithFallback, parseAIJSON, createStandardResponse, createErrorResponse } from "../_shared/ai-utils.ts";
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const requestId = crypto.randomUUID();
+
   try {
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return createErrorResponse("Unauthorized", 401, requestId);
+    }
+
+    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: authHeader } } });
+    const token = authHeader.replace("Bearer ", "");
+    const { data: userData, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !userData?.user) {
+      return createErrorResponse("Unauthorized", 401, requestId);
+    }
+
     const { jobTitle, jobDescription, companyName, userProfile, tone } = await req.json();
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured");
 
+    // ... (rest of prompts and toolDef)
     const systemPrompt = `You are an expert career coach and professional cover letter writer. 
 Create compelling, personalized cover letters that highlight the candidate's relevant experience and enthusiasm for the role.
 The cover letter should be professional yet personable, and tailored to the specific job and company.`;
@@ -64,14 +79,14 @@ Generate a compelling cover letter that:
     });
 
     if (!response.ok) {
-      return response; // callAIWithFallback already returns a structured error Response
+      return response;
     }
 
-    const data = await response.json();
+    const aiResult = await response.json();
     let result;
 
-    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    const content = data.choices?.[0]?.message?.content || "";
+    const toolCall = aiResult.choices?.[0]?.message?.tool_calls?.[0];
+    const content = aiResult.choices?.[0]?.message?.content || "";
 
     try {
       if (toolCall?.function?.arguments) {
@@ -80,20 +95,20 @@ Generate a compelling cover letter that:
         result = parseAIJSON(content);
       }
     } catch (e) {
-      console.error("Failed to parse AI response:", content);
-      throw new Error("Malformed AI response: " + content.substring(0, 100));
+      console.error(`[${aiResult.requestId || requestId}] Failed to parse AI response:`, content);
+      return createErrorResponse("Malformed AI response", 500, aiResult.requestId || requestId, true, content.substring(0, 500));
     }
 
-    return new Response(JSON.stringify(result), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    return createStandardResponse(result, aiResult.requestId || requestId);
   } catch (error: unknown) {
-    console.error("Cover letter generation error:", error);
-    return new Response(JSON.stringify({ 
-      error: error instanceof Error ? error.message : "Failed to generate cover letter",
-      details: error instanceof Error ? error.stack : undefined
-    }), { 
-      status: 500, 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-    });
+    console.error(`[${requestId}] Cover letter generation error:`, error);
+    return createErrorResponse(
+      error instanceof Error ? error.message : "An unexpected error occurred",
+      500,
+      requestId,
+      true,
+      error instanceof Error ? error.stack : undefined
+    );
   }
 });
 

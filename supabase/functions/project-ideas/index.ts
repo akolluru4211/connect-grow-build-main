@@ -1,11 +1,26 @@
-/// <reference lib="deno.ns" />
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { corsHeaders, callAIWithFallback } from "../_shared/ai-utils.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { corsHeaders, callAIWithFallback, createStandardResponse, createErrorResponse } from "../_shared/ai-utils.ts";
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const requestId = crypto.randomUUID();
+  console.log(`[${requestId}] Starting project ideas request`);
+
   try {
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return createErrorResponse("Unauthorized", 401, requestId);
+    }
+
+    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: authHeader } } });
+    const token = authHeader.replace("Bearer ", "");
+    const { data: userData, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !userData?.user) {
+      return createErrorResponse("Unauthorized", 401, requestId);
+    }
+
     const { branch, semester, difficulty, interests, projectType, teamSize } = await req.json();
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured");
@@ -31,7 +46,7 @@ For each project, provide comprehensive details:
 - realWorldUse: One sentence on how this applies in industry
 - githubSearchQuery: A search query to find similar repos on GitHub
 - youtubeSearchQuery: A search query to find tutorials on YouTube
-- estimatedCost: "Free", "Low (<â‚¹500)", or "Moderate (â‚¹500-2000)"
+- estimatedCost: "Free", "Low (<₹500)", or "Moderate (₹500-2000)"
 - uniqueSellingPoint: What makes this project stand out`
         },
       ],
@@ -75,6 +90,7 @@ For each project, provide comprehensive details:
     });
 
     if (!response.ok) {
+      console.error(`[${requestId}] AI provider error:`, response.status);
       return response;
     }
 
@@ -82,10 +98,11 @@ For each project, provide comprehensive details:
     const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
     const result = toolCall ? JSON.parse(toolCall.function.arguments) : { projects: [] };
 
-    return new Response(JSON.stringify(result), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    console.log(`[${requestId}] Project ideas generation successful`);
+    return createStandardResponse(result, requestId);
   } catch (error) {
-    console.error("project-ideas error:", error);
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    console.error(`[${requestId}] Project ideas error:`, error);
+    return createErrorResponse(error instanceof Error ? error.message : String(error), 500, requestId);
   }
 });
 

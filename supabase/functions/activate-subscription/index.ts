@@ -1,9 +1,12 @@
 /// <reference lib="deno.ns" />
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders } from "../_shared/ai-utils.ts";
+import { createStandardResponse, createErrorResponse, corsHeaders } from "../_shared/ai-utils.ts";
 
 const handler = async (req: Request): Promise<Response> => {
+  const requestId = crypto.randomUUID();
+  console.log(`[${requestId}] Activate subscription request received`);
+
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -16,28 +19,23 @@ const handler = async (req: Request): Promise<Response> => {
     // Get the user from the auth header
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.error(`[${requestId}] Unauthorized: No auth header`);
+      return createErrorResponse("Unauthorized", 401, requestId);
     }
 
     const token = authHeader.replace("Bearer ", "");
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) {
-      return new Response(JSON.stringify({ error: "Invalid token" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.error(`[${requestId}] Invalid token`, authError);
+      return createErrorResponse("Invalid token", 401, requestId);
     }
 
-    const { razorpay_payment_id, razorpay_order_id, plan_tier, billing_cycle, amount: paymentAmount } = await req.json();
+    const body = await req.json();
+    const { razorpay_payment_id, razorpay_order_id, plan_tier, billing_cycle, amount: paymentAmount } = body;
 
     if (!razorpay_payment_id) {
-      return new Response(JSON.stringify({ error: "Missing payment ID" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.error(`[${requestId}] Missing payment ID`);
+      return createErrorResponse("Missing payment ID", 400, requestId);
     }
 
     // Find the plan
@@ -50,10 +48,8 @@ const handler = async (req: Request): Promise<Response> => {
       .single();
 
     if (planError || !plan) {
-      return new Response(JSON.stringify({ error: "Plan not found" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.error(`[${requestId}] Plan not found for tier: ${targetTier}`, planError);
+      return createErrorResponse("Plan not found", 404, requestId);
     }
 
     // Auto-detect billing cycle based on payment amount
@@ -71,6 +67,8 @@ const handler = async (req: Request): Promise<Response> => {
     const periodDays = cycle === "yearly" ? 365 : 30;
     const now = new Date();
     const periodEnd = new Date(now.getTime() + periodDays * 24 * 60 * 60 * 1000);
+
+    console.log(`[${requestId}] Activating ${cycle} plan for user ${user.id}`);
 
     // Deactivate any existing active subscriptions
     await supabase
@@ -96,10 +94,8 @@ const handler = async (req: Request): Promise<Response> => {
       .single();
 
     if (subError) {
-      return new Response(JSON.stringify({ error: "Failed to activate subscription" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.error(`[${requestId}] Failed to activate subscription`, subError);
+      return createErrorResponse("Failed to activate subscription", 500, requestId);
     }
 
     // Record payment
@@ -125,18 +121,15 @@ const handler = async (req: Request): Promise<Response> => {
       link: "/pricing",
     });
 
-    return new Response(
-      JSON.stringify({ success: true, subscription }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    console.log(`[${requestId}] Subscription activated successfully`);
+    return createStandardResponse({ subscription }, requestId);
   } catch (error) {
+    console.error(`[${requestId}] Catch block error:`, error);
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
-    return new Response(JSON.stringify({ error: errorMessage }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return createErrorResponse(errorMessage, 500, requestId);
   }
 };
 
 serve(handler);
+
 

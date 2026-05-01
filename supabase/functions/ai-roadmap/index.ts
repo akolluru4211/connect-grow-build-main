@@ -1,11 +1,33 @@
 /// <reference lib="deno.ns" />
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { corsHeaders, callAIWithFallback, parseAIJSON } from "../_shared/ai-utils.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { corsHeaders, callAIWithFallback, parseAIJSON, createStandardResponse, createErrorResponse } from "../_shared/ai-utils.ts";
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const requestId = crypto.randomUUID();
+  console.log(`[${requestId}] Starting AI Roadmap request`);
+
   try {
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return createErrorResponse("Unauthorized", 401, requestId);
+    }
+
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: userData, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !userData?.user) {
+      console.error(`[${requestId}] Auth error:`, authError);
+      return createErrorResponse("Unauthorized", 401, requestId);
+    }
+
     const { careerGoal, currentSkills, timeframe, experienceLevel } = await req.json();
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured");
@@ -74,7 +96,9 @@ Provide a structured roadmap with:
     });
 
     if (!response.ok) {
-      return response; // callAIWithFallback already returns a structured error Response
+      const errorText = await response.text();
+      console.error(`[${requestId}] AI provider error:`, errorText);
+      return createErrorResponse("AI provider error", response.status, requestId, true, errorText);
     }
 
     const aiResult = await response.json();
@@ -90,28 +114,21 @@ Provide a structured roadmap with:
         roadmap = parseAIJSON(content);
       }
     } catch (e) {
-      console.error("Failed to parse AI response:", content);
-      return new Response(JSON.stringify({ 
-        error: "Malformed AI response", 
-        details: content.substring(0, 500)
-      }), { 
-        status: 500, 
-        headers: { ...corsHeaders, "Content-Type": "application/json" } 
-      });
+      console.error(`[${aiResult.requestId || requestId}] Failed to parse AI response:`, content);
+      return createErrorResponse("Malformed AI response", 500, aiResult.requestId || requestId, true, content.substring(0, 500));
     }
 
-    return new Response(JSON.stringify(roadmap), { 
-      headers: { ...corsHeaders, "Content-Type": "application/json" } 
-    });
+    console.log(`[${requestId}] AI Roadmap generated successfully`);
+    return createStandardResponse(roadmap, aiResult.requestId || requestId);
   } catch (error) {
-    console.error("Roadmap generation error:", error);
-    return new Response(JSON.stringify({ 
-      error: error instanceof Error ? error.message : "Unknown error",
-      details: error instanceof Error ? error.stack : undefined
-    }), { 
-      status: 500, 
-      headers: { ...corsHeaders, "Content-Type": "application/json" } 
-    });
+    console.error(`[${requestId}] Roadmap generation error:`, error);
+    return createErrorResponse(
+      error instanceof Error ? error.message : "An unexpected error occurred",
+      500,
+      requestId,
+      true,
+      error instanceof Error ? error.stack : undefined
+    );
   }
 });
 

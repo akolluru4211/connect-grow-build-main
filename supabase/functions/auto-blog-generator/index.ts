@@ -1,29 +1,46 @@
-/// <reference lib="deno.ns" />
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.89.0";
-import { corsHeaders, callAIWithFallback, parseAIJSON } from "../_shared/ai-utils.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.40.0";
+import { corsHeaders, callAIWithFallback, parseAIJSON, createStandardResponse, createErrorResponse } from "../_shared/ai-utils.ts";
 
 // AI blog author configuration
 const AI_AUTHOR_NAME = "Edworld co.";
 
 serve(async (req: Request) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  const requestId = crypto.randomUUID();
+  console.log(`[${requestId}] Starting auto-blog generation request`);
 
   try {
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-
-    if (!GEMINI_API_KEY) {
-      throw new Error("GEMINI_API_KEY is not configured");
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return createErrorResponse("Unauthorized", 401, requestId);
     }
 
-    const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: userData, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !userData?.user) {
+      console.error(`[${requestId}] Auth error:`, authError);
+      return createErrorResponse("Unauthorized", 401, requestId);
+    }
+
+    // Use service role for author profile management and blog insertion
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured");
 
     // Find or use an existing user as the AI author
-    const { data: existingProfile } = await supabase
+    const { data: existingProfile } = await supabaseAdmin
       .from("profiles")
       .select("id")
       .ilike("full_name", AI_AUTHOR_NAME)
@@ -34,8 +51,8 @@ serve(async (req: Request) => {
     if (existingProfile) {
       authorId = existingProfile.id;
     } else {
-      // Get the first available user to use as the AI author
-      const { data: firstUser, error: userError } = await supabase
+      // Get the first available user to use as the AI author (fallback)
+      const { data: firstUser, error: userError } = await supabaseAdmin
         .from("profiles")
         .select("id")
         .limit(1)
@@ -46,7 +63,7 @@ serve(async (req: Request) => {
       }
       
       // Update this profile to be the edwold AI author
-      await supabase
+      await supabaseAdmin
         .from("profiles")
         .update({ full_name: AI_AUTHOR_NAME, headline: "AI Content Creator" })
         .eq("id", firstUser.id);
@@ -98,7 +115,9 @@ Format your response as JSON with these exact fields:
     });
 
     if (!response.ok) {
-      return response;
+      const errorText = await response.text();
+      console.error(`[${requestId}] AI provider error:`, errorText);
+      return createErrorResponse("AI provider error", response.status, requestId, true, errorText);
     }
 
     const aiData = await response.json();
@@ -109,7 +128,7 @@ Format your response as JSON with these exact fields:
     try {
       parsedContent = parseAIJSON(rawContent);
     } catch (e) {
-      console.error("Failed to parse AI response:", rawContent);
+      console.error(`[${requestId}] Failed to parse AI response:`, rawContent);
       parsedContent = {
         title: `Career Tips: ${randomTopic}`,
         excerpt: `Learn valuable insights about ${randomTopic} to advance your career.`,
@@ -125,7 +144,7 @@ Format your response as JSON with these exact fields:
       .replace(/(^-|-$)/g, "") + "-" + Date.now();
 
     // Insert the blog post
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from("blog_posts")
       .insert({
         author_id: authorId,
@@ -141,20 +160,14 @@ Format your response as JSON with these exact fields:
       .single();
 
     if (error) {
-      console.error("Database error:", error);
+      console.error(`[${requestId}] Database error:`, error);
       throw error;
     }
 
-    console.log("Auto-generated blog post:", data.id);
-
-    return new Response(JSON.stringify({ success: true, data }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.log(`[${requestId}] Auto-generated blog post successfully:`, data.id);
+    return createStandardResponse({ data }, requestId);
   } catch (error) {
-    console.error("Auto blog generation error:", error);
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    console.error(`[${requestId}] Auto blog generation error:`, error);
+    return createErrorResponse(error instanceof Error ? error.message : String(error), 500, requestId);
   }
 });

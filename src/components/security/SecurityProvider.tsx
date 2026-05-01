@@ -183,10 +183,6 @@ export function SecurityProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Watermark text — includes user ID and session for forensic traceability
-  const watermarkText = user
-    ? `EdWorld · ${user.email ?? "user"} · Session ${sessionId.current}`
-    : `EdWorld Secured · Session ${sessionId.current}`;
 
   return (
     <SecurityContext.Provider value={{ securityLevel, violations }}>
@@ -222,39 +218,7 @@ export function SecurityProvider({ children }: { children: React.ReactNode }) {
         }
       `}</style>
 
-      {/* ── Invisible forensic watermark (visible on screenshots) ── */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: "fixed",
-          inset: 0,
-          zIndex: 9997,
-          pointerEvents: "none",
-          overflow: "hidden",
-          opacity: 0.035,
-        }}
-      >
-        {Array.from({ length: 12 }).map((_, row) =>
-          Array.from({ length: 6 }).map((_, col) => (
-            <div
-              key={`${row}-${col}`}
-              style={{
-                position: "absolute",
-                top: `${row * 9}%`,
-                left: `${col * 17}%`,
-                transform: "rotate(-30deg)",
-                fontSize: "10px",
-                fontWeight: 700,
-                whiteSpace: "nowrap",
-                color: "#000",
-                userSelect: "none",
-              }}
-            >
-              {watermarkText}
-            </div>
-          ))
-        )}
-      </div>
+      {/* Watermark removed as per user request */}
 
       {/* ── Blur overlay when window loses focus ── */}
       <AnimatePresence>

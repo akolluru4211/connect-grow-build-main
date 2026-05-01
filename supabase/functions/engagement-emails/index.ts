@@ -2,7 +2,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders } from "../_shared/ai-utils.ts";
+import { corsHeaders, createStandardResponse, createErrorResponse } from "../_shared/ai-utils.ts";
 
 const logoUrl = "https://scwliaddydtnadqvkahk.supabase.co/storage/v1/object/public/email-assets/edworld-logo.png";
 const siteUrl = Deno.env.get("SITE_URL") || "https://edworldco.com";
@@ -135,13 +135,23 @@ const handler = async (req: Request): Promise<Response> => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const requestId = crypto.randomUUID();
+  console.log(`[${requestId}] Starting engagement-emails task`);
+
   try {
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const isInternalCall = req.headers.get("x-internal-secret") === supabaseServiceKey;
+
+    if (!isInternalCall) {
+      console.warn(`[${requestId}] Unauthorized attempt to trigger engagement emails`);
+      return createErrorResponse("Unauthorized", 401, requestId);
+    }
+
     const resendKey = Deno.env.get("RESEND_API_KEY");
     if (!resendKey) throw new Error("RESEND_API_KEY not configured");
 
     const resend = new Resend(resendKey);
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const now = new Date();
@@ -409,19 +419,19 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
-    console.log(`Engagement emails completed: ${totalSent} sent, ${errors.length} errors`);
-    if (errors.length > 0) console.error("Errors:", errors.slice(0, 10));
+    console.log(`[${requestId}] Engagement emails completed: ${totalSent} sent, ${errors.length} errors`);
+    if (errors.length > 0) console.error(`[${requestId}] Errors:`, errors.slice(0, 10));
 
-    return new Response(JSON.stringify({ success: true, totalSent, errors: errors.length }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return createStandardResponse({ totalSent, errors: errors.length }, requestId);
   } catch (error: any) {
-    console.error("Error in engagement-emails:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.error(`[${requestId}] Error in engagement-emails:`, error);
+    return createErrorResponse(
+      error instanceof Error ? error.message : String(error),
+      500,
+      requestId,
+      true,
+      error instanceof Error ? error.stack : undefined
+    );
   }
 };
 

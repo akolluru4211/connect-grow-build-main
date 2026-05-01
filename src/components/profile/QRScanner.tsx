@@ -1,3 +1,4 @@
+
 import { useEffect, useRef, useState } from "react";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { Button } from "@/components/ui/button";
@@ -28,19 +29,19 @@ export function QRScanner({ onScan, onClose, isOpen }: QRScannerProps) {
     const startScanner = async () => {
       setIsInitializing(true);
       setError(null);
-      
+
       try {
         // Small delay to ensure the DOM element is actually rendered
         await new Promise(resolve => setTimeout(resolve, 300));
-        
+
         const element = document.getElementById("qr-reader");
         if (!element) return;
 
         const html5QrCode = new Html5Qrcode("qr-reader");
         qrCodeInstanceRef.current = html5QrCode;
 
-        const config = { 
-          fps: 10, 
+        const config = {
+          fps: 10,
           qrbox: { width: 250, height: 250 },
           formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
           aspectRatio: 1.0
@@ -88,14 +89,14 @@ export function QRScanner({ onScan, onClose, isOpen }: QRScannerProps) {
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white">
               <div>
                 <h3 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-                   <Camera className="text-primary h-5 w-5" /> 
-                   ID Scanner
+                  <Camera className="text-primary h-5 w-5" />
+                  ID Scanner
                 </h3>
                 <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">Scan an EdWorld Profile</p>
               </div>
-              <Button 
-                variant="ghost" 
-                size="icon" 
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={onClose}
                 className="rounded-full hover:bg-slate-100 h-10 w-10"
               >
@@ -104,8 +105,8 @@ export function QRScanner({ onScan, onClose, isOpen }: QRScannerProps) {
             </div>
 
             <div className="p-6 bg-slate-50 flex flex-col items-center justify-center min-h-[320px]">
-              <div 
-                id="qr-reader" 
+              <div
+                id="qr-reader"
                 className="w-full aspect-square overflow-hidden rounded-[2rem] border-4 border-white shadow-xl bg-slate-200 relative"
               >
                 {isInitializing && (
@@ -115,7 +116,7 @@ export function QRScanner({ onScan, onClose, isOpen }: QRScannerProps) {
                   </div>
                 )}
               </div>
-              
+
               {error && (
                 <div className="mt-6 p-4 bg-red-50 text-red-600 text-[10px] font-bold rounded-2xl border border-red-100 text-center uppercase tracking-widest leading-relaxed">
                   {error}
@@ -132,8 +133,8 @@ export function QRScanner({ onScan, onClose, isOpen }: QRScannerProps) {
                   Point camera at the QR code on a student's ID card.
                 </p>
               </div>
-              
-              <Button 
+
+              <Button
                 onClick={onClose}
                 className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black rounded-2xl h-14 uppercase tracking-widest shadow-xl shadow-slate-200 transition-all active:scale-95"
               >

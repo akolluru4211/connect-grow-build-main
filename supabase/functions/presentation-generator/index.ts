@@ -1,17 +1,32 @@
-/// <reference lib="deno.ns" />
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { corsHeaders, callAIWithFallback } from "../_shared/ai-utils.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { corsHeaders, callAIWithFallback, createStandardResponse, createErrorResponse } from "../_shared/ai-utils.ts";
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const requestId = crypto.randomUUID();
+  console.log(`[${requestId}] Starting presentation generation request`);
+
   try {
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return createErrorResponse("Unauthorized", 401, requestId);
+    }
+
+    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: authHeader } } });
+    const token = authHeader.replace("Bearer ", "");
+    const { data: userData, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !userData?.user) {
+      return createErrorResponse("Unauthorized", 401, requestId);
+    }
+
     const { notes, slideCount, theme, audience, includeConclusion } = await req.json();
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured");
 
     if (!notes || notes.trim().length < 20) {
-      return new Response(JSON.stringify({ error: "Please provide at least 20 characters of notes." }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return createErrorResponse("Please provide at least 20 characters of notes.", 400, requestId);
     }
 
     const numSlides = Math.min(Math.max(slideCount || 8, 3), 20);
@@ -69,6 +84,7 @@ ${notes.substring(0, 12000)}`
     });
 
     if (!response.ok) {
+      console.error(`[${requestId}] AI provider error:`, response.status);
       return response;
     }
 
@@ -76,10 +92,11 @@ ${notes.substring(0, 12000)}`
     const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
     const result = toolCall ? JSON.parse(toolCall.function.arguments) : { title: "Presentation", slides: [] };
 
-    return new Response(JSON.stringify(result), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    console.log(`[${requestId}] Presentation generation successful`);
+    return createStandardResponse(result, requestId);
   } catch (error) {
-    console.error("presentation-generator error:", error);
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    console.error(`[${requestId}] Presentation generator error:`, error);
+    return createErrorResponse(error instanceof Error ? error.message : String(error), 500, requestId);
   }
 });
 

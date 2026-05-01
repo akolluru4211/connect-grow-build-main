@@ -100,7 +100,6 @@
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^15.15.0",
     "postcss": "^8.5.6",
-    "rollup": "^3.30.0",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.38.0",
@@ -110,7 +109,13 @@
     "serialize-javascript": "^7.0.5",
     "esbuild": "^0.25.0",
     "tar": "^7.5.13",
-    "glob": "^11.0.0",
-    "rimraf": "^6.0.1"
+    "glob": "^13.0.6",
+    "rimraf": "^6.0.1",
+    "sourcemap-codec": "npm:@jridgewell/sourcemap-codec@^1.4.15",
+    "node-domexception": "^1.0.0",
+    "npmlog": "^7.0.1",
+    "gauge": "^5.0.2",
+    "are-we-there-yet": "^4.0.2",
+    "source-map": "^0.7.4"
   }
 }

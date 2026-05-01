@@ -125,24 +125,6 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function RouteDelay({ children }: { children: React.ReactNode }) {
-  const location = useLocation();
-  const [isTransitioning, setIsTransitioning] = useState(false);
-
-  useEffect(() => {
-    setIsTransitioning(true);
-    const timer = setTimeout(() => {
-      setIsTransitioning(false);
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [location.pathname]);
-
-  if (isTransitioning) {
-    return <PageLoader />;
-  }
-
-  return <>{children}</>;
-}
 
 function AppRoutes() {
   return (
@@ -220,9 +202,7 @@ const App = () => (
             <LoadingBar />
             <AuthProvider>
               <SecurityProvider>
-                <RouteDelay>
-                  <AppRoutes />
-                </RouteDelay>
+                <AppRoutes />
               </SecurityProvider>
             </AuthProvider>
           </BrowserRouter>
